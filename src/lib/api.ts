@@ -5,6 +5,7 @@ export const API_BASE_URL =
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const isLoginRequest = path === '/auth/login';
 
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData)
@@ -15,12 +16,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (typeof window !== 'undefined') {
     const token = getToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token && !isLoginRequest) headers['Authorization'] = `Bearer ${token}`;
   }
 
   const res = await fetch(url, { ...options, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !isLoginRequest) {
     logout();
     throw new Error('Unauthorized');
   }
