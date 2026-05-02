@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-ssm": "^3.1041.0",
     "country-state-city": "^3.2.1",
+    "dotenv": "^17.4.2",
     "lucide-react": "^0.575.0",
     "next": "^16.1.6",
     "react": "19.2.0",
