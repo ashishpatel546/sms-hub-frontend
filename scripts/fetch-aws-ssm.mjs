@@ -51,21 +51,18 @@ const run = async () => {
 
       let envContent = '';
       
+      // PORT and NODE_ENV are managed by ecosystem.config.js, not SSM
+      const SKIP_KEYS = new Set(['PORT', 'NODE_ENV']);
+
       const processParam = (param, prefix) => {
          if (!param.Name || !param.Value) return;
          const key = param.Name.replace(prefix, '');
          if (key.includes('/')) return;
+         if (SKIP_KEYS.has(key)) return;
          envContent += `${key}="${param.Value}"\n`;
       };
       
       platformParams.forEach(p => processParam(p, platformPath));
-
-      if (process.env.PORT && !envContent.includes('PORT=')) {
-         envContent += `PORT=${process.env.PORT}\n`;
-      }
-      if (process.env.NODE_ENV && !envContent.includes('NODE_ENV=')) {
-         envContent += `NODE_ENV=${process.env.NODE_ENV}\n`;
-      }
 
       fs.writeFileSync('.env', envContent);
       console.log('✅ Generated .env from AWS SSM parameters.');
