@@ -2,11 +2,17 @@
 
 const TOKEN_KEY = 'hub_auth_token';
 
+/**
+ * JWT role values are UPPERCASE (`SYSTEM_ADMIN`) — they're synced with
+ * the `UserRole` enum in `sms-backend` so the same token validates on
+ * both services. Keep this aligned with `HubUserRole` in `sms-hub-backend`.
+ */
+export type HubRole = 'SYSTEM_ADMIN';
+
 export interface HubUser {
   sub: number;
   email: string;
-  role: 'system_admin' | 'school_owner';
-  schoolId: number | null;
+  role: HubRole;
   isChangePasswordOnly?: boolean;
 }
 
@@ -47,5 +53,5 @@ export function getUser(): HubUser | null {
 }
 
 export function isSystemAdmin(): boolean {
-  return getUser()?.role === 'system_admin';
+  return getUser()?.role === 'SYSTEM_ADMIN';
 }

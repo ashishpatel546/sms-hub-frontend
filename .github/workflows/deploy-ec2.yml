@@ -1,0 +1,97 @@
+name: Deploy Hub Frontend to EC2
+
+on:
+  push:
+    branches:
+      - stage
+      - main
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  APP_ENV: ${{ github.ref == 'refs/heads/stage' && 'development' || 'production' }}
+  PORT: ${{ github.ref == 'refs/heads/stage' && '3021' || '3020' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/stage' && 'development' || 'production' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js project
+        env:
+          NEXT_PUBLIC_HUB_API_URL: ${{ vars.NEXT_PUBLIC_HUB_API_URL }}
+          NEXT_PUBLIC_SMS_API_URL: ${{ vars.NEXT_PUBLIC_SMS_API_URL }}
+          NEXT_PUBLIC_PUBLIC_ASSETS_URL: ${{ vars.NEXT_PUBLIC_PUBLIC_ASSETS_URL }}
+          NEXT_PUBLIC_APP_NAME: ${{ vars.NEXT_PUBLIC_APP_NAME }}
+        run: npm run build
+
+      - name: Deploy to EC2 - Prepare Environment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            DIR_NAME="sms-hub-frontend-${{ env.APP_ENV }}"
+            mkdir -p /home/${{ secrets.EC2_USERNAME }}/$DIR_NAME
+            cd /home/${{ secrets.EC2_USERNAME }}/$DIR_NAME
+
+            # Clean up old build artifacts to prevent ghost files
+            rm -rf .next
+
+      - name: Copy files via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: ".next/,public/,scripts/,package.json,package-lock.json,ecosystem.config.js"
+          target: "/home/${{ secrets.EC2_USERNAME }}/sms-hub-frontend-${{ env.APP_ENV }}"
+
+      - name: Fetch AWS SSM Params, Install Prod Dependencies and Restart PM2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Explicitly load Node/NVM in this non-interactive shell
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            export PATH=$PATH:/usr/local/bin
+
+            DIR_NAME="sms-hub-frontend-${{ env.APP_ENV }}"
+            cd /home/${{ secrets.EC2_USERNAME }}/$DIR_NAME
+            
+            # Install production dependencies
+            npm ci --omit=dev
+            
+            # Provide environment variables to the fetch script
+            export NODE_ENV=production
+            export PORT="${{ env.PORT }}"
+            export SSM_ENV="${{ env.APP_ENV }}"
+            export AWS_REGION="ap-south-1"
+            
+            # Fetch variables from AWS SSM into .env
+            node scripts/fetch-aws-ssm.mjs
+            
+            # Export .env vars into shell so PM2 --update-env picks them up
+            set -a && source .env && set +a
+            
+            # Restart or start PM2 with the dynamic name
+            export PM2_NAME=$DIR_NAME
+            pm2 start ecosystem.config.js --only $DIR_NAME --update-env || pm2 restart $DIR_NAME --update-env
+            pm2 save

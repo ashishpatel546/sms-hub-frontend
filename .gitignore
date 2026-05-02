@@ -17,3 +17,5 @@ docs/
 scripts/
 .env.*
 !.env.example
+
+*.tsbuildinfo

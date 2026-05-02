@@ -19,7 +19,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (token && !isLoginRequest) headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch {
+    const error: any = new Error('Network error');
+    error.info = { message: 'Cannot reach server. Check your connection or CORS configuration.' };
+    error.status = 0;
+    throw error;
+  }
 
   if (res.status === 401 && !isLoginRequest) {
     logout();
