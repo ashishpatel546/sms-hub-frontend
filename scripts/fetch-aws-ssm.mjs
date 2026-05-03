@@ -1,7 +1,8 @@
 import { SSMClient, GetParametersByPathCommand } from '@aws-sdk/client-ssm';
 import fs from 'fs';
 
-const isLocal = process.env.NODE_ENV === 'local' || process.env.NODE_ENV === 'development';
+const isLocal =
+  process.env.NODE_ENV === 'local' || process.env.NODE_ENV === 'development';
 if (isLocal && !process.env.FORCE_AWS_SSM) {
   console.log('📄 Using local environment config (AWS SSM skipped)');
   process.exit(0);
@@ -10,7 +11,9 @@ if (isLocal && !process.env.FORCE_AWS_SSM) {
 const env = process.env.SSM_ENV || process.env.NODE_ENV || 'development';
 console.log(`🔄 Fetching env from AWS SSM for hub on env [${env}]...`);
 
-const ssmClient = new SSMClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+const ssmClient = new SSMClient({
+  region: process.env.AWS_REGION || 'ap-south-1',
+});
 
 const platformPath = `/sms-hub/${env}/`;
 
@@ -32,44 +35,47 @@ const fetchParams = async (path) => {
       nextToken = response.NextToken;
     } while (nextToken);
   } catch (err) {
-    if (err.name === 'ParameterNotFound' || err.name === 'AccessDeniedException') {
-       console.warn(`Warning: Could not fetch path ${path} - ${err.message}`);
+    if (
+      err.name === 'ParameterNotFound' ||
+      err.name === 'AccessDeniedException'
+    ) {
+      console.warn(`Warning: Could not fetch path ${path} - ${err.message}`);
     } else {
-       throw err;
+      throw err;
     }
   }
   return allParams;
 };
 
 const run = async () => {
-   try {
-      const platformParams = await fetchParams(platformPath);
+  try {
+    const platformParams = await fetchParams(platformPath);
 
-      if (platformParams.length === 0) {
-         console.warn("⚠️ No parameters found in SSM.");
-      }
+    if (platformParams.length === 0) {
+      console.warn('⚠️ No parameters found in SSM.');
+    }
 
-      let envContent = '';
-      
-      // PORT and NODE_ENV are managed by ecosystem.config.js, not SSM
-      const SKIP_KEYS = new Set(['PORT', 'NODE_ENV']);
+    let envContent = '';
 
-      const processParam = (param, prefix) => {
-         if (!param.Name || !param.Value) return;
-         const key = param.Name.replace(prefix, '');
-         if (key.includes('/')) return;
-         if (SKIP_KEYS.has(key)) return;
-         envContent += `${key}="${param.Value}"\n`;
-      };
-      
-      platformParams.forEach(p => processParam(p, platformPath));
+    // PORT and NODE_ENV are managed by ecosystem.config.js, not SSM
+    const SKIP_KEYS = new Set(['PORT', 'NODE_ENV']);
 
-      fs.writeFileSync('.env', envContent);
-      console.log('✅ Generated .env from AWS SSM parameters.');
-   } catch (err) {
-      console.error('❌ Failed to fetch from AWS SSM', err);
-      process.exit(1);
-   }
+    const processParam = (param, prefix) => {
+      if (!param.Name || !param.Value) return;
+      const key = param.Name.replace(prefix, '');
+      if (key.includes('/')) return;
+      if (SKIP_KEYS.has(key)) return;
+      envContent += `${key}="${param.Value}"\n`;
+    };
+
+    platformParams.forEach((p) => processParam(p, platformPath));
+
+    fs.writeFileSync('.env', envContent);
+    console.log('✅ Generated .env from AWS SSM parameters.');
+  } catch (err) {
+    console.error('❌ Failed to fetch from AWS SSM', err);
+    process.exit(1);
+  }
 };
 
 run();
