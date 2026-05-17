@@ -18,12 +18,12 @@ import toast, { Toaster } from 'react-hot-toast';
 const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
 
 const KNOWN_FEATURE_FLAGS = [
-  'fee_predictions',
-  'ai_lesson_plan',
-  'whatsapp_notifications',
-  'pickup',
-  'homework_drive',
+  'hr_portal',
 ];
+
+const FEATURE_LABELS: Record<string, string> = {
+  hr_portal: 'HR Portal',
+};
 
 const KNOWN_SECRETS = [
   { key: 'razorpay_key_id', label: 'Razorpay Key ID' },
@@ -813,8 +813,10 @@ export default function SchoolDetailPage() {
                     key={flag}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-sm font-mono text-gray-700">
-                      {flag}
+                    <span className="text-sm text-gray-700">
+                      {FEATURE_LABELS[flag] ?? (
+                        <span className="font-mono">{flag}</span>
+                      )}
                     </span>
                     <label className="inline-flex items-center cursor-pointer">
                       <input
