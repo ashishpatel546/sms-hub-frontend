@@ -19,10 +19,12 @@ const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
 
 const KNOWN_FEATURE_FLAGS = [
   'hr_portal',
+  'library_management',
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
   hr_portal: 'HR Portal',
+  library_management: 'Library Management',
 };
 
 const KNOWN_SECRETS = [
@@ -378,7 +380,7 @@ export default function SchoolDetailPage() {
                     className="h-9 w-9 rounded-lg object-contain border border-gray-100"
                   />
                 ) : (
-                  <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700 grid place-items-center font-bold text-sm">
+                  <div className="h-9 w-9 rounded-lg bg-linear-to-br from-blue-100 to-indigo-100 text-blue-700 grid place-items-center font-bold text-sm">
                     {school.name.charAt(0).toUpperCase()}
                   </div>
                 );
