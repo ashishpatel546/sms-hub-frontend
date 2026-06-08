@@ -147,6 +147,12 @@ function DashboardContent() {
                 <span className="text-base leading-none">＋</span>
                 New School
               </Link>
+              <Link
+                href="/dashboard/ai"
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                🤖 AI Platform
+              </Link>
               <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-200">
                 <div className="text-right">
                   <p className="text-xs font-medium text-slate-700">
