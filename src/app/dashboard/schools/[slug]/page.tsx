@@ -20,11 +20,13 @@ const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
 const KNOWN_FEATURE_FLAGS = [
   'hr_portal',
   'library_management',
+  'ai_tools',
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
   hr_portal: 'HR Portal',
   library_management: 'Library Management',
+  ai_tools: 'AI Tools',
 };
 
 const KNOWN_SECRETS = [

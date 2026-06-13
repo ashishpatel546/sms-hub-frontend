@@ -1,20 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { aiAdmin, type AiSetting } from '@/lib/ai-admin-api';
 import toast from 'react-hot-toast';
 
 const KNOWN_SETTINGS: Record<string, { label: string; description: string; type: string }> = {
-  tokens_per_credit:                  { label: 'Tokens per Credit', description: 'How many LLM tokens = 1 AI credit', type: 'number' },
-  token_cost_input_per_million_usd:   { label: 'Input Token Cost ($/M)', description: 'LLM input token cost per million (USD)', type: 'number' },
-  token_cost_output_per_million_usd:  { label: 'Output Token Cost ($/M)', description: 'LLM output token cost per million (USD)', type: 'number' },
-  usd_to_inr_rate:                    { label: 'USD → INR Rate', description: 'Exchange rate for cost tracking', type: 'number' },
-  max_chars_chat:                     { label: 'Max Chat Chars', description: 'Character limit for student chat input', type: 'number' },
-  max_chars_lesson_plan:              { label: 'Max Lesson Plan Chars', description: 'Character limit for lesson plan input', type: 'number' },
-  max_chars_question_paper:           { label: 'Max Question Paper Chars', description: 'Character limit for question paper input', type: 'number' },
-  max_chars_worksheet:                { label: 'Max Worksheet Chars', description: 'Character limit for worksheet input', type: 'number' },
-  max_chars_assignment:               { label: 'Max Assignment Chars', description: 'Character limit for assignment input', type: 'number' },
+  free_plan_credits:            { label: 'Free Plan Credits', description: 'Monthly credits granted to users with no active subscription', type: 'number' },
+  max_credits_grant_per_action: { label: 'Max Credits per Grant', description: 'Maximum credits an admin can grant in a single action', type: 'number' },
+  session_token_expiry_minutes: { label: 'Session Token Expiry (min)', description: 'AI session JWT expiry in minutes', type: 'number' },
 };
+
+// tokens_per_credit, usd_to_inr_rate, and llm_tier_* are stored in the same
+// settings table but have dedicated editors on the AI Plans page (Model
+// Pricing / AI Model Tiers panels) — hide their raw rows here.
+function isManagedElsewhere(key: string): boolean {
+  return key === 'tokens_per_credit' || key === 'usd_to_inr_rate' || key.startsWith('llm_tier_');
+}
 
 function SettingRow({ setting, onSave }: { setting: AiSetting; onSave: () => void }) {
   const [value, setValue] = useState(setting.value);
@@ -73,20 +75,25 @@ export default function AiSettingsPage() {
 
   useEffect(() => { load(); }, []);
 
+  const visible = settings.filter((s) => !isManagedElsewhere(s.key));
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Platform Settings</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Token ratios, cost tracking, and feature input limits</p>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Free plan credits, credit grant limits, and session expiry. Model tiers and pricing are managed on the{' '}
+          <Link href="/dashboard/ai/plans" className="text-violet-600 hover:underline">AI Plans</Link> page.
+        </p>
       </div>
 
       <div className="bg-white rounded-2xl ring-1 ring-slate-200 px-5">
         {loading ? (
           <div className="py-12 text-center text-sm text-slate-400 animate-pulse">Loading…</div>
-        ) : settings.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-400">No settings found.</div>
         ) : (
-          settings.map((s) => <SettingRow key={s.key} setting={s} onSave={load} />)
+          visible.map((s) => <SettingRow key={s.key} setting={s} onSave={load} />)
         )}
       </div>
     </div>

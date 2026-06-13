@@ -92,6 +92,18 @@ export default function AiOverviewPage() {
               sub={`${month} · ${(data.tokens_used_this_month / 1000).toFixed(1)}k tokens`}
               accent="rose"
             />
+            <StatCard
+              label="LLM Cost This Month"
+              value={`₹${(data.llm_cost_this_month_inr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+              sub="from per-model pricing"
+              accent="rose"
+            />
+            <StatCard
+              label="Gross Margin"
+              value={`₹${(data.gross_margin_this_month_inr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+              sub="revenue − LLM cost"
+              accent={(data.gross_margin_this_month_inr ?? 0) >= 0 ? 'emerald' : 'rose'}
+            />
           </div>
 
           <div className="bg-white rounded-2xl p-5 ring-1 ring-slate-200 text-sm text-slate-600">
