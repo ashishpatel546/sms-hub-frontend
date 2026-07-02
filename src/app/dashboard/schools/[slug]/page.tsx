@@ -21,12 +21,14 @@ const KNOWN_FEATURE_FLAGS = [
   'hr_portal',
   'library_management',
   'ai_tools',
+  'online_fee_payment',
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
   hr_portal: 'HR Portal',
   library_management: 'Library Management',
   ai_tools: 'AI Tools',
+  online_fee_payment: 'Online Fee Payment',
 };
 
 const KNOWN_SECRETS = [
