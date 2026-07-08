@@ -22,6 +22,7 @@ const KNOWN_FEATURE_FLAGS = [
   'library_management',
   'ai_tools',
   'online_fee_payment',
+  'visitor_management',
 ];
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ const FEATURE_LABELS: Record<string, string> = {
   library_management: 'Library Management',
   ai_tools: 'AI Tools',
   online_fee_payment: 'Online Fee Payment',
+  visitor_management: 'Visitor Management',
 };
 
 const KNOWN_SECRETS = [
