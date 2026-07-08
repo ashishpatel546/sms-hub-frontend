@@ -66,6 +66,10 @@ export default function SchoolDetailPage() {
   const [ownerFirst, setOwnerFirst] = useState('');
   const [ownerLast, setOwnerLast] = useState('');
   const [ownerSaving, setOwnerSaving] = useState(false);
+  const [resettingOwnerPw, setResettingOwnerPw] = useState(false);
+  const [ownerResetPassword, setOwnerResetPassword] = useState<string | null>(
+    null,
+  );
   const countries = useMemo(() => Country.getAllCountries(), []);
   const states = useMemo(
     () =>
@@ -208,6 +212,38 @@ export default function SchoolDetailPage() {
       toast.error(apiErr?.info?.message || 'Owner update failed');
     } finally {
       setOwnerSaving(false);
+    }
+  }
+
+  async function handleResetOwnerPassword() {
+    if (!school || !owner) return;
+    if (
+      !confirm(
+        `Reset the password for ${owner.email}? They will be required to change it on next login.`,
+      )
+    ) {
+      return;
+    }
+    setResettingOwnerPw(true);
+    try {
+      const result = await adminSchools.resetOwnerPassword(school.slug);
+      setOwnerResetPassword(result.temporaryPassword);
+      toast.success('Password reset. Share it securely.');
+    } catch (err: unknown) {
+      const apiErr = err as { info?: { message?: string } };
+      toast.error(apiErr?.info?.message || 'Password reset failed');
+    } finally {
+      setResettingOwnerPw(false);
+    }
+  }
+
+  async function handleCopyOwnerResetPassword() {
+    if (!ownerResetPassword) return;
+    try {
+      await navigator.clipboard.writeText(ownerResetPassword);
+      toast.success('Copied to clipboard');
+    } catch {
+      toast.error('Copy failed');
     }
   }
 
@@ -525,7 +561,40 @@ export default function SchoolDetailPage() {
                   />
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
+              {ownerResetPassword && (
+                <div className="mt-4 bg-gray-100 rounded-md p-4 space-y-2">
+                  <p className="text-sm text-gray-600">
+                    Share this temporary password with{' '}
+                    <strong>{owner.email}</strong> over a secure channel. They
+                    must change it on first login.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 font-mono text-lg select-all bg-white rounded-md px-3 py-2 border">
+                      {ownerResetPassword}
+                    </div>
+                    <button
+                      onClick={() => void handleCopyOwnerResetPassword()}
+                      className="bg-gray-700 text-white rounded-md px-3 py-2 text-sm hover:bg-gray-800"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => setOwnerResetPassword(null)}
+                      className="border rounded-md px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex justify-between">
+                <button
+                  onClick={() => void handleResetOwnerPassword()}
+                  disabled={resettingOwnerPw}
+                  className="border border-red-300 text-red-700 rounded-md px-4 py-2 text-sm hover:bg-red-50 disabled:opacity-50"
+                >
+                  {resettingOwnerPw ? 'Resetting…' : 'Reset Password'}
+                </button>
                 <button
                   onClick={() => void handleOwnerSave()}
                   disabled={ownerSaving}

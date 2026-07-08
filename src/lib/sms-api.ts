@@ -192,6 +192,10 @@ export const adminSchools = {
     smsApi.get<SchoolOwner>(`/admin/schools/${slug}/owner`),
   updateOwner: (slug: string, body: UpdateSchoolOwnerPayload) =>
     smsApi.patch<SchoolOwner>(`/admin/schools/${slug}/owner`, body),
+  resetOwnerPassword: (slug: string) =>
+    smsApi.post<{ email: string; temporaryPassword: string }>(
+      `/admin/schools/${slug}/owner/reset-password`,
+    ),
 };
 
 // ── Public asset URLs ────────────────────────────────────────────────────
