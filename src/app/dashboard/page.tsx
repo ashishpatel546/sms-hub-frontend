@@ -148,6 +148,18 @@ function DashboardContent() {
                 New School
               </Link>
               <Link
+                href="/dashboard/school-plans"
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                ₹ Plans
+              </Link>
+              <Link
+                href="/dashboard/billing-settings"
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-slate-200 text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors inline-flex items-center gap-1.5"
+              >
+                🧾 Billing
+              </Link>
+              <Link
                 href="/dashboard/ai"
                 className="text-sm font-medium px-4 py-2 rounded-lg border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors inline-flex items-center gap-1.5"
               >

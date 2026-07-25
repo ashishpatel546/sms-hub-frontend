@@ -68,6 +68,8 @@ export const smsApi = {
     }),
   patch: <T>(path: string, body: unknown) =>
     smsRequest<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    smsRequest<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => smsRequest<T>(path, { method: 'DELETE' }),
 };
 
@@ -197,6 +199,244 @@ export const adminSchools = {
       `/admin/schools/${slug}/owner/reset-password`,
     ),
 };
+
+// ── Billing: types ───────────────────────────────────────────────────────
+
+export type BillingFrequency =
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'HALF_YEARLY'
+  | 'ANNUAL';
+
+export const BILLING_FREQUENCIES: BillingFrequency[] = [
+  'MONTHLY',
+  'QUARTERLY',
+  'HALF_YEARLY',
+  'ANNUAL',
+];
+
+export const FREQUENCY_LABELS: Record<BillingFrequency, string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: 'Half-yearly',
+  ANNUAL: 'Annual',
+};
+
+export type NegotiatedDiscountType = 'NONE' | 'PERCENT' | 'FLAT';
+export type InvoiceType = 'PERIOD' | 'TRUEUP';
+export type InvoiceStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface PlanSlab {
+  minStudents: number;
+  maxStudents: number | null;
+  discountPercent: number;
+}
+
+export interface FeatureCatalogEntry {
+  key: string;
+  label: string;
+  group: string;
+  description: string;
+  defaultEnabled: boolean;
+}
+
+export interface BillingPlan {
+  id: number;
+  name: string;
+  description: string | null;
+  /** Per student per month, in paise. */
+  pricePerStudentPaise: number;
+  features: Record<string, boolean>;
+  frequencyDiscounts: Partial<Record<BillingFrequency, number>>;
+  slabs: PlanSlab[];
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchoolSubscription {
+  id: number;
+  schoolId: number;
+  planId: number;
+  plan?: BillingPlan;
+  frequency: BillingFrequency;
+  status: 'ACTIVE' | 'CANCELLED';
+  baselineStudentCount: number;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  negotiatedDiscountType: NegotiatedDiscountType;
+  negotiatedDiscountValue: string;
+  isTrial: boolean;
+  trialDiscountPercent: string;
+  trialEndsAt: string | null;
+  graceDays: number | null;
+  notes: string | null;
+}
+
+export interface BillingInvoice {
+  id: number;
+  invoiceNumber: string;
+  schoolId: number;
+  type: InvoiceType;
+  periodStart: string;
+  periodEnd: string;
+  status: InvoiceStatus;
+  studentCount: number;
+  subtotalPaise: string;
+  totalPaise: string;
+  gstPaise: string;
+  dueDate: string;
+  issuedAt: string;
+  paidAt: string | null;
+  paymentMethod: 'RAZORPAY' | 'OFFLINE' | null;
+  offlineReference: string | null;
+  voidReason: string | null;
+  discountBreakdown: {
+    slabPercent: number;
+    slabPaise: number;
+    frequencyPercent: number;
+    frequencyPaise: number;
+    negotiatedPaise: number;
+    trialPercent: number;
+    trialPaise: number;
+    totalDiscountPaise: number;
+  };
+}
+
+export interface SchoolBillingOverview {
+  school: { id: number; slug: string; name: string; status: SchoolStatus };
+  subscription: SchoolSubscription | null;
+  billableStudents: number;
+  outstandingPaise: number;
+  invoiceCount: number;
+}
+
+export interface BillingConfig {
+  id: number;
+  companyName: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  pan: string | null;
+  gstin: string | null;
+  gstEnabled: boolean;
+  gstPercent: string;
+  invoicePrefix: string;
+  defaultPaymentTermDays: number;
+  defaultGraceDays: number;
+  defaultTrialDays: number;
+  defaultTrialDiscountPercent: string;
+  invoiceFooterNote: string | null;
+}
+
+export interface AssignSubscriptionPayload {
+  planId: number;
+  frequency: BillingFrequency;
+  negotiatedDiscountType?: NegotiatedDiscountType;
+  negotiatedDiscountValue?: number;
+  isTrial?: boolean;
+  trialDiscountPercent?: number;
+  trialEndsAt?: string | null;
+  graceDays?: number | null;
+  notes?: string | null;
+  skipFirstInvoice?: boolean;
+}
+
+export interface JobRunResult {
+  generated: number;
+  skippedExisting: number;
+  failed: number;
+  details: Array<{
+    schoolId: number;
+    schoolName?: string;
+    outcome: 'generated' | 'skipped' | 'failed' | 'preview';
+    invoiceNumber?: string;
+    totalPaise?: number;
+    studentCount?: number;
+    reason?: string;
+  }>;
+}
+
+export interface BillingJobInfo {
+  name: string;
+  requiresMonth: boolean;
+}
+
+// ── Billing: endpoint helpers ────────────────────────────────────────────
+
+export const schoolPlans = {
+  list: (signal?: AbortSignal) =>
+    smsApi.get<BillingPlan[]>('/admin/school-plans', signal),
+  create: (body: Partial<BillingPlan>) =>
+    smsApi.post<BillingPlan>('/admin/school-plans', body),
+  update: (id: number, body: Partial<BillingPlan>) =>
+    smsApi.patch<BillingPlan>(`/admin/school-plans/${id}`, body),
+  remove: (id: number) =>
+    smsApi.delete<{ deleted: boolean; retired: boolean }>(
+      `/admin/school-plans/${id}`,
+    ),
+  featureCatalog: (signal?: AbortSignal) =>
+    smsApi.get<FeatureCatalogEntry[]>('/admin/feature-catalog', signal),
+};
+
+export const adminBilling = {
+  getSubscription: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SchoolBillingOverview>(
+      `/admin/schools/${slug}/subscription`,
+      signal,
+    ),
+  assignSubscription: (slug: string, body: AssignSubscriptionPayload) =>
+    smsApi.put<SchoolSubscription>(`/admin/schools/${slug}/subscription`, body),
+  cancelSubscription: (slug: string) =>
+    smsApi.delete<SchoolSubscription>(`/admin/schools/${slug}/subscription`),
+  extendGrace: (slug: string, graceDays: number) =>
+    smsApi.post<SchoolSubscription>(
+      `/admin/schools/${slug}/subscription/extend-grace`,
+      { graceDays },
+    ),
+  listInvoices: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<BillingInvoice[]>(`/admin/schools/${slug}/invoices`, signal),
+  recordOfflinePayment: (
+    slug: string,
+    invoiceId: number,
+    body: { reference: string; note?: string },
+  ) =>
+    smsApi.post<BillingInvoice>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/record-offline-payment`,
+      body,
+    ),
+  voidInvoice: (slug: string, invoiceId: number, reason: string) =>
+    smsApi.post<BillingInvoice>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/void`,
+      { reason },
+    ),
+  listJobs: () => smsApi.get<BillingJobInfo[]>('/admin/billing/jobs'),
+  runJob: (name: string, body: { targetMonth?: string; dryRun?: boolean }) =>
+    smsApi.post<JobRunResult>(`/admin/billing/run-job/${name}`, body),
+};
+
+export const billingConfig = {
+  get: (signal?: AbortSignal) =>
+    smsApi.get<BillingConfig>('/admin/billing-config', signal),
+  update: (body: Partial<BillingConfig>) =>
+    smsApi.patch<BillingConfig>('/admin/billing-config', body),
+};
+
+/** ₹ formatting for paise amounts — the only money unit the API speaks. */
+export function formatPaise(paise: number | string): string {
+  const value = Number(paise) / 100;
+  return value.toLocaleString('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  });
+}
 
 // ── Public asset URLs ────────────────────────────────────────────────────
 

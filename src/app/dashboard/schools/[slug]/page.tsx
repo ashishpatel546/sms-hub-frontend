@@ -14,6 +14,7 @@ import {
   type SchoolProfile,
 } from '@/lib/sms-api';
 import toast, { Toaster } from 'react-hot-toast';
+import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
 
 const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
 
@@ -854,34 +855,20 @@ export default function SchoolDetailPage() {
             </div>
           </section>
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-              Plan
-            </h2>
-            <div className="flex items-center gap-3">
-              <select
-                value={school.plan}
-                onChange={(e) =>
-                  void handlePlanChange(e.target.value as SchoolPlan)
-                }
-                className="border rounded-md px-3 py-2 text-sm bg-white"
-              >
-                {PLANS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-400">
-                Plan changes take effect immediately.
-              </p>
-            </div>
-          </section>
+          <SchoolBillingSection
+            slug={slug}
+            onSchoolChanged={() => void refresh()}
+          />
 
           <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-              Feature Flags
+            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-1">
+              Feature Overrides
             </h2>
+            <p className="text-xs text-gray-400 mb-4">
+              The subscribed plan decides what this school gets by default.
+              Switching a feature here overrides the plan for this school only —
+              useful when something extra was promised during a negotiation.
+            </p>
             <div className="space-y-2">
               {allFeatureKeys.map((flag) => {
                 const enabled = !!school.features?.[flag];
