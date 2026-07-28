@@ -3,33 +3,13 @@
 import { useEffect, useState } from 'react';
 import { aiAdmin, type AiOverview } from '@/lib/ai-admin-api';
 import toast from 'react-hot-toast';
+import { PageHeader } from '@/components/ConsoleShell';
+import Readout from '@/components/ui/Readout';
+import NumberTicker from '@/components/ui/NumberTicker';
+import { Reveal } from '@/components/ui/Reveal';
 
-function StatCard({
-  label,
-  value,
-  sub,
-  accent = 'blue',
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  accent?: 'blue' | 'violet' | 'emerald' | 'amber' | 'rose';
-}) {
-  const colors: Record<string, string> = {
-    blue:    'from-blue-50 to-blue-100/60 text-blue-600',
-    violet:  'from-violet-50 to-violet-100/60 text-violet-600',
-    emerald: 'from-emerald-50 to-emerald-100/60 text-emerald-600',
-    amber:   'from-amber-50 to-amber-100/60 text-amber-600',
-    rose:    'from-rose-50 to-rose-100/60 text-rose-600',
-  };
-  return (
-    <div className={`bg-gradient-to-br ${colors[accent]} rounded-2xl p-5 ring-1 ring-inset ring-white/80`}>
-      <p className="text-xs font-semibold uppercase tracking-wider opacity-70">{label}</p>
-      <p className="mt-1.5 text-2xl font-bold text-slate-900">{value}</p>
-      {sub && <p className="mt-0.5 text-xs opacity-60">{sub}</p>}
-    </div>
-  );
-}
+const inr = (n: number, dp = 0) =>
+  `₹${n.toLocaleString('en-IN', { maximumFractionDigits: dp })}`;
 
 export default function AiOverviewPage() {
   const [data, setData] = useState<AiOverview | null>(null);
@@ -48,74 +28,132 @@ export default function AiOverviewPage() {
       .finally(() => setLoading(false));
   }, [month]);
 
+  const margin = data?.gross_margin_this_month_inr ?? 0;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">AI Platform</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Overview of the school-ai SaaS platform</p>
-        </div>
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+    <div className="mx-auto max-w-wide px-5 py-6 lg:px-10 lg:py-10">
+      <Reveal>
+        <PageHeader
+          eyebrow="AI platform"
+          title="Overview"
+          description="How the school-ai product is being used and what it costs to run."
+          actions={
+            <label className="flex items-center gap-2">
+              <span className="t-eyebrow">Month</span>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                aria-label="Reporting month"
+                className="input w-auto"
+              />
+            </label>
+          }
         />
-      </div>
+      </Reveal>
 
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-24 bg-slate-100 rounded-2xl animate-pulse" />
-          ))}
+        <div className="space-y-4">
+          <div className="panel h-[86px] animate-pulse" />
+          <div className="panel h-[168px] animate-pulse" />
         </div>
       ) : data ? (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Total Schools" value={data.total_schools} accent="blue" />
-            <StatCard label="Total Users" value={data.total_users.toLocaleString()} accent="violet" />
-            <StatCard label="Active Subscriptions" value={data.active_subscriptions} accent="emerald" sub={month} />
-            <StatCard
-              label="Revenue This Month"
-              value={`₹${data.revenue_this_month_inr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-              accent="amber"
+        <div className="space-y-4">
+          <Reveal delay={0.05}>
+            <Readout
+              stats={[
+                { label: 'Schools', value: data.total_schools, accent: 'chalk' },
+                { label: 'Users', value: data.total_users, accent: 'sky' },
+                {
+                  label: 'Active subscriptions',
+                  value: data.active_subscriptions,
+                  accent: 'mint',
+                },
+                {
+                  label: 'Credits used',
+                  value: data.credits_used_this_month,
+                  accent: 'iris',
+                  hint: `${(data.tokens_used_this_month / 1000).toFixed(1)}k tokens`,
+                },
+              ]}
             />
-            <StatCard
-              label="All-Time Revenue"
-              value={`₹${data.revenue_all_time_inr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-              accent="amber"
-            />
-            <StatCard
-              label="Credits Used"
-              value={data.credits_used_this_month.toLocaleString()}
-              sub={`${month} · ${(data.tokens_used_this_month / 1000).toFixed(1)}k tokens`}
-              accent="rose"
-            />
-            <StatCard
-              label="LLM Cost This Month"
-              value={`₹${(data.llm_cost_this_month_inr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-              sub="from per-model pricing"
-              accent="rose"
-            />
-            <StatCard
-              label="Gross Margin"
-              value={`₹${(data.gross_margin_this_month_inr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-              sub="revenue − LLM cost"
-              accent={(data.gross_margin_this_month_inr ?? 0) >= 0 ? 'emerald' : 'rose'}
-            />
-          </div>
+          </Reveal>
 
-          <div className="bg-white rounded-2xl p-5 ring-1 ring-slate-200 text-sm text-slate-600">
-            <p className="font-semibold text-slate-800 mb-1">Quick links</p>
-            <ul className="list-disc list-inside space-y-1 text-slate-500">
-              <li>Manage AI users → <a href="/dashboard/ai/users" className="text-violet-600 hover:underline">Users</a></li>
-              <li>Add or edit pricing plans → <a href="/dashboard/ai/plans" className="text-violet-600 hover:underline">Plans</a></li>
-              <li>Tune token rates and limits → <a href="/dashboard/ai/settings" className="text-violet-600 hover:underline">Settings</a></li>
-            </ul>
-          </div>
-        </>
+          {/* ── Unit economics ────────────────────────────────────────
+              Revenue, cost and margin are one sentence, not three cards.
+              Laying them out as the equation they actually are makes the
+              relationship readable without a legend. */}
+          <Reveal delay={0.1}>
+            <section className="panel p-5">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 className="t-section text-chalk">This month</h2>
+                <span className="t-mono text-chalk-faint">{month}</span>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-x-6 gap-y-5">
+                <Term
+                  label="Revenue"
+                  value={data.revenue_this_month_inr}
+                  accent="text-mint"
+                />
+                <Operator>−</Operator>
+                <Term
+                  label="LLM cost"
+                  value={data.llm_cost_this_month_inr ?? 0}
+                  accent="text-rose"
+                  dp={2}
+                />
+                <Operator>=</Operator>
+                <Term
+                  label="Gross margin"
+                  value={margin}
+                  accent={margin >= 0 ? 'text-mint' : 'text-rose'}
+                  dp={2}
+                />
+              </div>
+
+              <div className="mt-5 flex items-baseline gap-2.5 border-t border-line pt-4">
+                <span className="t-eyebrow">All-time revenue</span>
+                <span className="t-num text-[15px] text-chalk-soft">
+                  {inr(data.revenue_all_time_inr)}
+                </span>
+              </div>
+            </section>
+          </Reveal>
+        </div>
       ) : null}
+    </div>
+  );
+}
+
+/* Terms and operators share the same two-row structure — an eyebrow row and a
+   figure row — so every glyph in the equation sits on one baseline. */
+function Term({
+  label,
+  value,
+  accent,
+  dp = 0,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+  dp?: number;
+}) {
+  return (
+    <div className="min-w-[130px]">
+      <p className="t-eyebrow">{label}</p>
+      <p className={`t-num mt-1.5 text-[26px] ${accent}`}>
+        <NumberTicker value={value} format={(n) => inr(n, dp)} />
+      </p>
+    </div>
+  );
+}
+
+function Operator({ children }: { children: React.ReactNode }) {
+  return (
+    <div aria-hidden>
+      <p className="t-eyebrow invisible">&nbsp;</p>
+      <p className="t-num mt-1.5 text-[26px] text-chalk-faint">{children}</p>
     </div>
   );
 }

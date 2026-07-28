@@ -4,13 +4,25 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Country, State, City } from 'country-state-city';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Copy,
+  Loader2,
+  Upload,
+} from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import ConsoleShell, { PageHeader } from '@/components/ConsoleShell';
+import ChalkToaster from '@/components/ui/ChalkToaster';
+import BorderBeam from '@/components/ui/BorderBeam';
+import { Reveal } from '@/components/ui/Reveal';
 import {
   adminSchools,
   type CreateSchoolPayload,
   type SchoolProfile,
 } from '@/lib/sms-api';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 export default function NewSchoolPage() {
   const router = useRouter();
@@ -26,6 +38,7 @@ export default function NewSchoolPage() {
   const [loading, setLoading] = useState(false);
   const [defaultPassword, setDefaultPassword] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // ── Logo (uploaded after school is created) ───────────────────────
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -153,111 +166,164 @@ export default function NewSchoolPage() {
     }
   }
 
+  async function copyPassword() {
+    if (!defaultPassword) return;
+    try {
+      await navigator.clipboard.writeText(defaultPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Copy blocked by the browser — select the text instead');
+    }
+  }
+
   return (
     <ProtectedRoute requireRole="SYSTEM_ADMIN">
-      <Toaster />
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <header className="bg-white shadow-sm px-6 py-4 flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-gray-500 hover:text-gray-800"
-          >
-            &larr; Back
-          </Link>
-          <h1 className="text-xl font-bold text-gray-800 border-l pl-4 border-gray-300">
-            Onboard New School
-          </h1>
-        </header>
+      <ChalkToaster />
+      <ConsoleShell>
+        <div className="mx-auto max-w-reading px-5 py-6 lg:px-10 lg:py-10">
+          <Reveal>
+            <Link
+              href="/dashboard"
+              className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-chalk-dim transition-colors hover:text-chalk"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Schools
+            </Link>
 
-        <main className="flex-1 max-w-3xl w-full mx-auto px-6 py-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            {defaultPassword ? (
-              <div className="space-y-5">
-                <h2 className="text-lg font-semibold text-green-700">
-                  School onboarded ✓
-                </h2>
-                <p className="text-sm text-gray-600">
-                  Share this temporary password with{' '}
-                  <strong>{adminEmail}</strong> over a secure channel. They
-                  must change it on first login.
+            <PageHeader
+              eyebrow="Tenants"
+              title={defaultPassword ? 'School onboarded' : 'Onboard a school'}
+              description={
+                defaultPassword
+                  ? 'Hand the owner their temporary password, then finish setting the school up.'
+                  : 'Creates the tenant and its first owner account. The owner sets their own password on first sign-in.'
+              }
+            />
+          </Reveal>
+
+          {defaultPassword ? (
+            /* ── Hand-off ────────────────────────────────────────────
+               The one screen in the console that shows a secret, and it
+               shows it exactly once. It gets the whole width and the only
+               beam on the page. */
+            <Reveal delay={0.05} className="space-y-4">
+              <div className="panel relative overflow-hidden p-6">
+                <BorderBeam duration={8} />
+                <p className="t-eyebrow">Temporary password</p>
+                <p className="mt-2 text-[13px] text-chalk-soft">
+                  Send this to <strong className="text-chalk">{adminEmail}</strong>{' '}
+                  over a secure channel. They must change it on first sign-in,
+                  and it is not shown again.
                 </p>
-                <div className="bg-gray-100 rounded-md p-4 font-mono text-lg select-all">
-                  {defaultPassword}
-                </div>
 
-                {/* Logo upload — optional, right after creation */}
-                <div className="border rounded-lg p-4 space-y-3">
-                  <p className="text-sm font-medium text-gray-700">
-                    Upload logo{' '}
-                    <span className="font-normal text-gray-400">(optional)</span>
-                  </p>
-                  {logoUploaded ? (
-                    <p className="text-sm text-green-600">✓ Logo uploaded successfully</p>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <input
-                        ref={logoInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                        onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
-                        disabled={logoUploading}
-                        className="text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleLogoUpload}
-                        disabled={!logoFile || logoUploading}
-                        className="bg-blue-600 text-white rounded-md px-4 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap"
-                      >
-                        {logoUploading ? 'Uploading…' : 'Upload'}
-                      </button>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-400">
-                    PNG / JPEG / WEBP / SVG, max 5 MB. Can also be changed
-                    later from the school’s settings page.
-                  </p>
-                </div>
-
-                <div className="flex gap-3 pt-1">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <code className="panel-sunken flex-1 px-4 py-3 font-mono text-[17px] tracking-wide text-mint select-all">
+                    {defaultPassword}
+                  </code>
                   <button
-                    onClick={() => router.push(`/dashboard/schools/${createdSlug}`)}
-                    className="bg-blue-600 text-white rounded-md px-5 py-2 text-sm hover:bg-blue-700"
+                    type="button"
+                    onClick={copyPassword}
+                    className="btn btn-secondary h-[46px]"
                   >
-                    Manage School
-                  </button>
-                  <button
-                    onClick={() => router.push('/dashboard')}
-                    className="border rounded-md px-5 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    Back to Dashboard
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4 text-mint" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <section>
-                  <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-                    School Details
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        School Name
-                      </label>
+
+              <div className="panel p-6">
+                <p className="t-eyebrow">School logo</p>
+                <p className="mt-2 text-[13px] text-chalk-dim">
+                  Optional. PNG, JPEG, WEBP or SVG up to 5 MB. You can also add
+                  it later from the school&rsquo;s profile.
+                </p>
+
+                {logoUploaded ? (
+                  <p className="mt-4 inline-flex items-center gap-2 text-[13px] text-mint">
+                    <Check className="h-4 w-4" strokeWidth={2.5} />
+                    Logo uploaded
+                  </p>
+                ) : (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+                      disabled={logoUploading}
+                      className="max-w-full text-[12px] text-chalk-dim file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-line-strong file:bg-ink-700 file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-chalk hover:file:bg-ink-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLogoUpload}
+                      disabled={!logoFile || logoUploading}
+                      className="btn btn-secondary"
+                    >
+                      {logoUploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Uploading…
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4" />
+                          Upload
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() =>
+                    router.push(`/dashboard/schools/${createdSlug}`)
+                  }
+                  className="btn btn-primary"
+                >
+                  Set up {name || 'the school'}
+                </button>
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="btn btn-secondary"
+                >
+                  Back to schools
+                </button>
+              </div>
+            </Reveal>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Onboarding really is a sequence — the owner cannot exist
+                  before the tenant does — so the steps are numbered. */}
+              <Reveal delay={0.05}>
+                <FormSection step="01" title="School">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="School name" required>
                       <input
                         type="text"
                         required
                         value={name}
                         onChange={(e) => handleNameChange(e.target.value)}
-                        placeholder="e.g. Modern Public School"
-                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Modern Public School"
+                        className="input"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Slug
-                      </label>
+                    </Field>
+                    <Field
+                      label="Slug"
+                      required
+                      hint="Lowercase letters, digits and underscores. Becomes the subdomain and the X-School-Slug header."
+                    >
                       <input
                         type="text"
                         required
@@ -265,138 +331,121 @@ export default function NewSchoolPage() {
                         value={slug}
                         onChange={(e) => setSlug(e.target.value)}
                         placeholder="modern_public"
-                        className="w-full border rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input font-mono text-[12px]"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
-                        Lowercase letters, digits, underscore. Used as
-                        subdomain and X-School-Slug header.
-                      </p>
-                    </div>
+                    </Field>
                   </div>
-                </section>
+                </FormSection>
+              </Reveal>
 
-                <section>
-                  <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-                    School Owner
-                  </h2>
-                  <p className="text-xs text-gray-500 -mt-2 mb-4">
-                    The first SUPER_ADMIN account for this school. They can
-                    invite additional staff after first login.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email <span className="text-red-500">*</span>
-                      </label>
+              <Reveal delay={0.1}>
+                <FormSection
+                  step="02"
+                  title="Owner"
+                  note="The first SUPER_ADMIN for this school. They invite the rest of the staff after signing in. A temporary password is generated server-side."
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Email" required className="md:col-span-2">
                       <input
                         type="email"
                         required
                         value={adminEmail}
                         onChange={(e) => setAdminEmail(e.target.value)}
                         placeholder="principal@example.com"
-                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        First Name
-                      </label>
+                    </Field>
+                    <Field label="First name">
                       <input
                         type="text"
                         value={adminFirst}
                         onChange={(e) => setAdminFirst(e.target.value)}
                         placeholder="Optional"
-                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Last Name
-                      </label>
+                    </Field>
+                    <Field label="Last name">
                       <input
                         type="text"
                         value={adminLast}
                         onChange={(e) => setAdminLast(e.target.value)}
                         placeholder="Optional"
-                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input"
                       />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Mobile Number <span className="text-red-500">*</span>
-                      </label>
+                    </Field>
+                    <Field
+                      label="Mobile"
+                      required
+                      className="md:col-span-2"
+                      hint="The owner can sign in with either email or mobile."
+                    >
                       <input
                         type="tel"
                         required
                         pattern="^\d{6,15}$"
                         value={adminMobile}
-                        onChange={(e) => setAdminMobile(e.target.value.replace(/\D/g, ''))}
-                        placeholder="9876543210 (used for portal login)"
+                        onChange={(e) =>
+                          setAdminMobile(e.target.value.replace(/\D/g, ''))
+                        }
+                        placeholder="9876543210"
                         maxLength={15}
-                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="input"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
-                        The owner can sign in with either email or mobile.
-                        Required from day one.
-                      </p>
-                    </div>
+                    </Field>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    A temporary password will be generated server-side. The
-                    admin will be required to change it on first login.
-                  </p>
-                </section>
+                </FormSection>
+              </Reveal>
 
-                <section>
+              <Reveal delay={0.15}>
+                <section className="panel overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setProfileOpen((v) => !v)}
-                    className="w-full flex items-center justify-between border-b pb-2 mb-4 text-left"
+                    aria-expanded={profileOpen}
+                    className="flex w-full cursor-pointer items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-ink-700"
                   >
-                    <span className="text-lg font-semibold text-gray-800">
-                      Contact &amp; Address{' '}
-                      <span className="text-xs font-normal text-gray-400">
-                        (optional)
+                    <span className="t-mono text-chalk-faint">03</span>
+                    <span className="flex-1">
+                      <span className="t-section block text-chalk">
+                        Contact and address
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-chalk-dim">
+                        Optional — can be filled in later from the school
+                        profile.
                       </span>
                     </span>
-                    <span className="text-gray-400 text-sm">
-                      {profileOpen ? '▲ Hide' : '▼ Show'}
-                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-chalk-dim transition-transform duration-200 ${
+                        profileOpen ? 'rotate-180' : ''
+                      }`}
+                    />
                   </button>
+
                   {profileOpen && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Tagline
-                        </label>
+                    <div className="grid gap-4 border-t border-line px-5 py-5 md:grid-cols-2">
+                      <Field label="Tagline" className="md:col-span-2">
                         <input
                           type="text"
                           value={tagline}
                           onChange={(e) => setTagline(e.target.value)}
                           placeholder="Excellence in education"
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Website
-                        </label>
+                      </Field>
+                      <Field label="Website">
                         <input
                           type="url"
                           value={website}
                           onChange={(e) => setWebsite(e.target.value)}
                           placeholder="https://…"
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Board
-                        </label>
+                      </Field>
+                      <Field label="Board">
                         <select
                           value={board}
                           onChange={(e) => setBoard(e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         >
                           <option value="">—</option>
                           <option value="CBSE">CBSE</option>
@@ -406,57 +455,42 @@ export default function NewSchoolPage() {
                           <option value="IGCSE">IGCSE</option>
                           <option value="OTHER">Other</option>
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Contact Email
-                        </label>
+                      </Field>
+                      <Field label="Contact email">
                         <input
                           type="email"
                           value={contactEmail}
                           onChange={(e) => setContactEmail(e.target.value)}
                           placeholder="info@school.edu"
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Contact Phone
-                        </label>
+                      </Field>
+                      <Field label="Contact phone">
                         <input
                           type="tel"
                           value={contactPhone}
                           onChange={(e) => setContactPhone(e.target.value)}
                           placeholder="+91 …"
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Address Line 1
-                        </label>
+                      </Field>
+                      <Field label="Address line 1" className="md:col-span-2">
                         <input
                           type="text"
                           value={addressLine1}
                           onChange={(e) => setAddressLine1(e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Address Line 2
-                        </label>
+                      </Field>
+                      <Field label="Address line 2" className="md:col-span-2">
                         <input
                           type="text"
                           value={addressLine2}
                           onChange={(e) => setAddressLine2(e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Country
-                        </label>
+                      </Field>
+                      <Field label="Country">
                         <select
                           value={countryCode}
                           onChange={(e) => {
@@ -464,7 +498,7 @@ export default function NewSchoolPage() {
                             setStateCode('');
                             setCity('');
                           }}
-                          className="w-full border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         >
                           {countries.map((c) => (
                             <option key={c.isoCode} value={c.isoCode}>
@@ -472,11 +506,8 @@ export default function NewSchoolPage() {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          State / Province
-                        </label>
+                      </Field>
+                      <Field label="State / province">
                         <select
                           value={stateCode}
                           onChange={(e) => {
@@ -484,7 +515,7 @@ export default function NewSchoolPage() {
                             setCity('');
                           }}
                           disabled={!states.length}
-                          className="w-full border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                          className="input"
                         >
                           <option value="">—</option>
                           {states.map((s) => (
@@ -493,16 +524,13 @@ export default function NewSchoolPage() {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          City
-                        </label>
+                      </Field>
+                      <Field label="City">
                         {cities.length ? (
                           <select
                             value={city}
                             onChange={(e) => setCity(e.target.value)}
-                            className="w-full border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="input"
                           >
                             <option value="">—</option>
                             {cities.map((ct) => (
@@ -516,46 +544,106 @@ export default function NewSchoolPage() {
                             type="text"
                             value={city}
                             onChange={(e) => setCity(e.target.value)}
-                            className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="input"
                           />
                         )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Postal Code
-                        </label>
+                      </Field>
+                      <Field label="Postal code">
                         <input
                           type="text"
                           value={postalCode}
                           onChange={(e) => setPostalCode(e.target.value)}
-                          className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="input"
                         />
-                      </div>
+                      </Field>
                     </div>
                   )}
                 </section>
+              </Reveal>
 
-                <div className="flex justify-end gap-3 pt-2">
+              <Reveal delay={0.2}>
+                <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => router.back()}
-                    className="px-5 border rounded-md py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                    className="btn btn-ghost"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="bg-blue-600 text-white rounded-md px-6 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                    className="btn btn-primary"
                   >
-                    {loading ? 'Creating…' : 'Create School'}
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Creating…
+                      </>
+                    ) : (
+                      'Create school'
+                    )}
                   </button>
                 </div>
-              </form>
-            )}
-          </div>
-        </main>
-      </div>
+              </Reveal>
+            </form>
+          )}
+        </div>
+      </ConsoleShell>
     </ProtectedRoute>
+  );
+}
+
+// ── Local form furniture ──────────────────────────────────────────────
+
+function FormSection({
+  step,
+  title,
+  note,
+  children,
+}: {
+  step: string;
+  title: string;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="panel p-5">
+      <div className="mb-5 flex items-start gap-3 border-b border-line pb-4">
+        <span className="t-mono mt-0.5 text-chalk-faint">{step}</span>
+        <div>
+          <h2 className="t-section text-chalk">{title}</h2>
+          {note && (
+            <p className="mt-1 max-w-xl text-[12px] text-chalk-dim">{note}</p>
+          )}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  required,
+  hint,
+  className,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`block ${className ?? ''}`}>
+      <span className="field-label">
+        {label}
+        {required && <span className="ml-1 text-rose">*</span>}
+      </span>
+      {children}
+      {hint && <span className="mt-1.5 block text-[11px] text-chalk-faint">{hint}</span>}
+    </label>
   );
 }

@@ -5,11 +5,11 @@ import ConsoleShell from '@/components/ConsoleShell';
 import ChalkToaster from '@/components/ui/ChalkToaster';
 
 /**
- * The AI platform used to carry its own violet-accented sidebar. It now sits
- * inside the one console shell like every other section — iris stays as the
- * section's accent inside the pages themselves, which is enough to place you.
+ * Billing had its own emerald sidebar mirroring the AI platform's violet one.
+ * Both are gone: there is a single console shell now, and this stays only as
+ * the auth + toaster wrapper the three billing routes already import.
  */
-export default function AiAdminLayout({
+export default function BillingShell({
   children,
 }: {
   children: React.ReactNode;

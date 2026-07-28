@@ -2,11 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'motion/react';
+import { ArrowRight, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getToken, getUser, setToken } from '@/lib/auth';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import ChalkToaster from '@/components/ui/ChalkToaster';
+import GridPattern from '@/components/ui/GridPattern';
+import Spotlight from '@/components/ui/Spotlight';
+import BorderBeam from '@/components/ui/BorderBeam';
+import { Mark } from '@/components/ui/Mark';
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Colegio Hub';
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Colegios-Hub';
+
+const CAPABILITIES = [
+  'Onboard a school in one form',
+  'Turn features on per school, no deploy',
+  'Rotate encrypted secrets in place',
+  'Suspend or restore any tenant instantly',
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -83,9 +97,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const apiErr = err as { info?: { message?: string }; message?: string };
       toast.error(
-        apiErr?.info?.message ||
-          apiErr?.message ||
-          'Failed to change password',
+        apiErr?.info?.message || apiErr?.message || 'Failed to change password',
       );
     } finally {
       setLoading(false);
@@ -94,93 +106,144 @@ export default function LoginPage() {
 
   if (redirecting) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        <div className="h-8 w-8 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
+      <div className="grid min-h-dvh place-items-center bg-ink-900">
+        <Loader2 className="h-5 w-5 animate-spin text-mint" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            borderRadius: 12,
-            background: '#0f172a',
-            color: '#fff',
-            fontSize: 13,
-          },
-        }}
-      />
+    <div className="relative flex min-h-dvh overflow-hidden bg-ink-900">
+      <ChalkToaster position="top-center" />
 
-      {/* Decorative blobs */}
-      <div className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-300/30 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 w-[28rem] h-[28rem] rounded-full bg-indigo-400/30 blur-3xl" />
+      <GridPattern className="opacity-[0.55]" />
+      <Spotlight className="-top-40 -left-32 h-[34rem] w-[44rem]" />
 
-      {/* Left brand pane */}
-      <div className="hidden lg:flex flex-col justify-between w-[45%] xl:w-[50%] p-12 relative">
-        <div className="flex items-center gap-3">
-          <LogoMark />
-          <span className="text-xl font-bold text-slate-800">{APP_NAME}</span>
-        </div>
+      {/* ── Brand pane ──────────────────────────────────────────────── */}
+      <div className="relative hidden w-[46%] flex-col justify-between border-r border-line px-12 py-11 lg:flex xl:w-[52%]">
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="flex items-center gap-2.5"
+        >
+          <Mark />
+          <span className="t-section text-chalk">{APP_NAME}</span>
+        </motion.div>
 
-        <div className="space-y-6 max-w-md">
-          <h2 className="text-4xl xl:text-5xl font-bold text-slate-900 leading-tight">
-            One platform.<br />
-            <span className="text-blue-600">Every school.</span>
-          </h2>
-          <p className="text-slate-600 text-base leading-relaxed">
-            Provision, configure and operate every tenant from a single
-            console. Plan tiers, feature flags, encrypted secrets and live
-            student counts — all in one place.
-          </p>
-          <ul className="space-y-3 pt-2">
-            {[
-              'Onboard a new school in seconds',
-              'Toggle features per tenant without a deploy',
-              'Encrypted secret rotation built-in',
-              'Suspend or activate any tenant instantly',
-            ].map((line) => (
-              <li
+        <div className="max-w-lg">
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1, duration: 0.5 }}
+            className="t-eyebrow"
+          >
+            Platform control plane
+          </motion.p>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.16, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="t-display mt-4 text-[52px] text-chalk xl:text-[60px]"
+          >
+            Every school
+            <br />
+            on one board.
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.26, duration: 0.5 }}
+            className="mt-5 max-w-md text-[15px] leading-relaxed text-chalk-soft"
+          >
+            Provision a tenant, flip a feature, rotate a secret, suspend a
+            school. One console, every environment.
+          </motion.p>
+
+          <ul className="mt-8 space-y-2.5">
+            {CAPABILITIES.map((line, i) => (
+              <motion.li
                 key={line}
-                className="flex items-start gap-3 text-sm text-slate-700"
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.36 + i * 0.07, duration: 0.4 }}
+                className="flex items-center gap-3 text-[13px] text-chalk-soft"
               >
-                <CheckIcon />
-                <span>{line}</span>
-              </li>
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full border border-mint-edge bg-mint-tint">
+                  <Check className="h-2.5 w-2.5 text-mint" strokeWidth={3} />
+                </span>
+                {line}
+              </motion.li>
             ))}
           </ul>
+
         </div>
 
-        <p className="text-xs text-slate-400">
-          © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
-        </p>
+        {/* Which environment is this build wired to? An operator who runs a
+            staging and a production console side by side needs to know before
+            they sign in, not after. Both values are already public in the
+            bundle — surfacing them here just makes them legible. */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.75, duration: 0.5 }}
+          className="space-y-3"
+        >
+          <p className="t-eyebrow">Wired to</p>
+          <dl className="space-y-1.5">
+            {[
+              ['Hub API', process.env.NEXT_PUBLIC_HUB_API_URL],
+              ['Tenant API', process.env.NEXT_PUBLIC_SMS_API_URL],
+            ].map(([label, url]) => (
+              <div key={label} className="flex items-center gap-3">
+                <dt className="t-mono w-20 shrink-0 text-chalk-faint">
+                  {label}
+                </dt>
+                <dd className="t-mono truncate text-chalk-soft">
+                  {url ?? 'not configured'}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="t-mono pt-1 text-[11px] text-chalk-faint">
+            © {new Date().getFullYear()} {APP_NAME}
+          </p>
+        </motion.div>
       </div>
 
-      {/* Right form pane */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 relative z-10">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <LogoMark />
-            <span className="text-xl font-bold text-slate-800">
-              {APP_NAME}
-            </span>
+      {/* ── Form pane ───────────────────────────────────────────────── */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-[400px]"
+        >
+          <div className="mb-8 flex items-center justify-center gap-2.5 lg:hidden">
+            <Mark />
+            <span className="t-section text-chalk">{APP_NAME}</span>
           </div>
 
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl shadow-blue-900/5 border border-white p-8">
+          <div className="panel relative overflow-hidden p-7">
+            <BorderBeam duration={9} />
+
             {step === 'login' ? (
               <>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Welcome back
-                </h1>
-                <p className="text-sm text-slate-500 mt-1 mb-6">
-                  Sign in to manage your schools.
+                <p className="t-eyebrow">Sign in</p>
+                <h2 className="t-title mt-2.5 text-chalk">Welcome back</h2>
+                <p className="mt-1.5 text-[13px] text-chalk-dim">
+                  System administrators only.
                 </p>
 
-                <form onSubmit={handleLoginSubmit} className="space-y-4">
-                  <Field label="Email">
+                <form onSubmit={handleLoginSubmit} className="mt-7 space-y-4">
+                  <div>
+                    <label className="field-label" htmlFor="email">
+                      Email
+                    </label>
                     <input
+                      id="email"
                       type="email"
                       required
                       autoComplete="email"
@@ -188,163 +251,146 @@ export default function LoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="superadmin@colegios.in"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+                      className="input"
                     />
-                  </Field>
+                  </div>
 
-                  <Field label="Password">
+                  <div>
+                    <label className="field-label" htmlFor="password">
+                      Password
+                    </label>
                     <div className="relative">
                       <input
+                        id="password"
                         type={showPassword ? 'text' : 'password'}
                         required
                         autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 pr-16 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+                        className="input pr-11"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-700"
+                        aria-label={
+                          showPassword ? 'Hide password' : 'Show password'
+                        }
+                        className="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded p-1.5 text-chalk-faint transition-colors hover:text-chalk"
                       >
-                        {showPassword ? 'Hide' : 'Show'}
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
-                  </Field>
+                  </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold shadow-sm hover:shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="btn btn-primary btn-lg mt-1 w-full"
                   >
                     {loading ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Spinner /> Signing in…
-                      </span>
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Signing in…
+                      </>
                     ) : (
-                      'Sign In'
+                      <>
+                        Sign in
+                        <ArrowRight className="h-4 w-4" />
+                      </>
                     )}
                   </button>
                 </form>
 
-                <p className="text-xs text-slate-400 mt-6 text-center">
-                  Trouble accessing your account? Contact your platform
-                  administrator.
+                <p className="mt-6 text-center text-[11px] text-chalk-faint">
+                  Locked out? Ask another platform administrator to reset your
+                  account.
                 </p>
               </>
             ) : (
               <>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Set a new password
-                </h1>
-                <p className="text-sm text-slate-500 mt-1 mb-6">
-                  This is your first sign-in. Choose a strong password to
-                  continue.
+                <p className="t-eyebrow">First sign-in</p>
+                <h2 className="t-title mt-2.5 text-chalk">Set a password</h2>
+                <p className="mt-1.5 text-[13px] text-chalk-dim">
+                  Choose a new password to finish signing in. At least 6
+                  characters.
                 </p>
 
                 <form
                   onSubmit={handleChangePasswordSubmit}
-                  className="space-y-4"
+                  className="mt-7 space-y-4"
                 >
-                  <Field label="New password">
+                  <div>
+                    <label className="field-label" htmlFor="new-password">
+                      New password
+                    </label>
                     <div className="relative">
                       <input
+                        id="new-password"
                         type={showNew ? 'text' : 'password'}
                         required
                         minLength={6}
                         autoFocus
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+                        className="input pr-11"
                       />
                       <button
                         type="button"
                         onClick={() => setShowNew((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-700"
+                        aria-label={
+                          showNew ? 'Hide password' : 'Show password'
+                        }
+                        className="absolute top-1/2 right-2.5 -translate-y-1/2 cursor-pointer rounded p-1.5 text-chalk-faint transition-colors hover:text-chalk"
                       >
-                        {showNew ? 'Hide' : 'Show'}
+                        {showNew ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
-                  </Field>
+                  </div>
 
-                  <Field label="Confirm password">
+                  <div>
+                    <label className="field-label" htmlFor="confirm-password">
+                      Confirm password
+                    </label>
                     <input
+                      id="confirm-password"
                       type={showNew ? 'text' : 'password'}
                       required
                       minLength={6}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+                      className="input"
                     />
-                  </Field>
+                  </div>
 
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg py-2.5 text-sm font-semibold shadow-sm hover:shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 transition-all"
+                    className="btn btn-primary btn-lg mt-1 w-full"
                   >
                     {loading ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Spinner /> Updating…
-                      </span>
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Updating…
+                      </>
                     ) : (
-                      'Update Password'
+                      'Update password'
                     )}
                   </button>
                 </form>
               </>
             )}
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
-  );
-}
-
-// ── Small visual helpers ────────────────────────────────────────────────
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function LogoMark() {
-  return (
-    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 grid place-items-center text-white font-bold shadow-lg shadow-blue-900/20">
-      C
-    </div>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-blue-100 grid place-items-center text-blue-600">
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
-        <path
-          fillRule="evenodd"
-          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-          clipRule="evenodd"
-        />
-      </svg>
-    </span>
-  );
-}
-
-function Spinner() {
-  return (
-    <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
   );
 }

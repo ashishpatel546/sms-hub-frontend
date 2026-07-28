@@ -1,4 +1,7 @@
 import { getToken, logout } from './auth';
+import type { InvoiceDetail } from './billing-invoice-pdf';
+
+export type { InvoiceDetail };
 
 /**
  * Typed client for `sms-backend` (the per-school API). Reuses the
@@ -68,6 +71,8 @@ export const smsApi = {
     }),
   patch: <T>(path: string, body: unknown) =>
     smsRequest<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    smsRequest<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => smsRequest<T>(path, { method: 'DELETE' }),
 };
 
@@ -106,6 +111,12 @@ export interface School extends SchoolProfile {
   onboardedAt: string | null;
   suspendedAt: string | null;
   logoUpdatedAt: string | null;
+  /**
+   * Ready-to-render logo URL resolved by sms-backend, already cache-busted
+   * with `?v=<logoUpdatedAt>`. `null` when no logo has been uploaded. The hub
+   * never builds this itself — the bucket layout is the backend's business.
+   */
+  logoUrl: string | null;
   createdAt: string;
   updatedAt: string;
   studentCount?: number;
@@ -198,26 +209,449 @@ export const adminSchools = {
     ),
 };
 
-// ── Public asset URLs ────────────────────────────────────────────────────
+// ── Billing: types ───────────────────────────────────────────────────────
 
-/**
- * Base URL for the public assets S3 bucket.
- * Must match `PUBLIC_ASSETS_BUCKET` / `PUBLIC_ASSETS_REGION` in sms-backend.
- */
-const PUBLIC_ASSETS_URL =
-  process.env.NEXT_PUBLIC_PUBLIC_ASSETS_URL ||
-  'https://appme-public-assets.s3.ap-south-1.amazonaws.com';
+export type BillingFrequency =
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'HALF_YEARLY'
+  | 'ANNUAL';
 
-/**
- * Returns the canonical logo URL for a school, or `null` if no logo has
- * been uploaded yet. Adds a `?v=<timestamp>` cache-buster derived from
- * `school.logoUpdatedAt`.
- */
-export function getPublicLogoUrl(
-  slug: string,
-  logoUpdatedAt: string | null | undefined,
-): string | null {
-  if (!logoUpdatedAt) return null;
-  const v = new Date(logoUpdatedAt).getTime();
-  return `${PUBLIC_ASSETS_URL}/schools/${slug}/logo.png?v=${v}`;
+export const BILLING_FREQUENCIES: BillingFrequency[] = [
+  'MONTHLY',
+  'QUARTERLY',
+  'HALF_YEARLY',
+  'ANNUAL',
+];
+
+export const FREQUENCY_LABELS: Record<BillingFrequency, string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: 'Half-yearly',
+  ANNUAL: 'Annual',
+};
+
+export type NegotiatedDiscountType = 'NONE' | 'PERCENT' | 'FLAT';
+export type InvoiceType = 'PERIOD' | 'TRUEUP';
+export type InvoiceStatus =
+  | 'PENDING'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'OVERDUE'
+  | 'VOID';
+
+export interface PlanSlab {
+  minStudents: number;
+  maxStudents: number | null;
+  discountPercent: number;
 }
+
+export interface FeatureCatalogEntry {
+  key: string;
+  label: string;
+  group: string;
+  description: string;
+  defaultEnabled: boolean;
+}
+
+export interface BillingPlan {
+  id: number;
+  name: string;
+  description: string | null;
+  /** Per student per month, in paise. */
+  pricePerStudentPaise: number;
+  features: Record<string, boolean>;
+  frequencyDiscounts: Partial<Record<BillingFrequency, number>>;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchoolSubscription {
+  id: number;
+  schoolId: number;
+  planId: number;
+  plan?: BillingPlan;
+  frequency: BillingFrequency;
+  status: 'ACTIVE' | 'CANCELLED';
+  baselineStudentCount: number;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  negotiatedDiscountType: NegotiatedDiscountType;
+  negotiatedDiscountValue: string;
+  isTrial: boolean;
+  trialDiscountPercent: string;
+  trialEndsAt: string | null;
+  graceDays: number | null;
+  applySlabDiscount: boolean;
+  notes: string | null;
+}
+
+export interface BillingInvoice {
+  id: number;
+  invoiceNumber: string;
+  schoolId: number;
+  type: InvoiceType;
+  periodStart: string;
+  periodEnd: string;
+  status: InvoiceStatus;
+  studentCount: number;
+  subtotalPaise: string;
+  totalPaise: string;
+  gstPaise: string;
+  dueDate: string;
+  issuedAt: string;
+  paidAt: string | null;
+  paymentMethod: 'RAZORPAY' | 'OFFLINE' | null;
+  offlineReference: string | null;
+  voidReason: string | null;
+  discountBreakdown: {
+    slabPercent: number;
+    slabPaise: number;
+    frequencyPercent: number;
+    frequencyPaise: number;
+    negotiatedPaise: number;
+    trialPercent: number;
+    trialPaise: number;
+    totalDiscountPaise: number;
+  };
+  /** How the invoice was actually settled, when it has been. */
+  settlement: {
+    amountPaidPaise: number;
+    couponCode: string | null;
+    couponDiscountPaise: number;
+    method: 'RAZORPAY' | 'OFFLINE';
+    reference: string | null;
+  } | null;
+  /** Cash in, minus anything sent back, plus credit and write-offs. */
+  settledPaise: number;
+  /** What is still owed. Zero on a settled invoice. */
+  balancePaise: number;
+}
+
+export type RefundStatus = 'PENDING' | 'PROCESSED' | 'FAILED';
+
+export interface BillingRefund {
+  id: number;
+  amountPaise: number;
+  creditedPaise: number;
+  waivedPaise: number;
+  status: RefundStatus;
+  method: 'RAZORPAY' | 'OFFLINE';
+  reason: string;
+  reference: string | null;
+  createdAt: string;
+}
+
+export interface CreditEntry {
+  id: number;
+  deltaPaise: string;
+  reason: string;
+  invoiceId: number | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface SchoolBillingOverview {
+  school: { id: number; slug: string; name: string; status: SchoolStatus };
+  subscription: SchoolSubscription | null;
+  billableStudents: number;
+  outstandingPaise: number;
+  invoiceCount: number;
+}
+
+export interface BillingConfig {
+  id: number;
+  companyName: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  pan: string | null;
+  gstin: string | null;
+  gstEnabled: boolean;
+  gstPercent: string;
+  invoicePrefix: string;
+  defaultPaymentTermDays: number;
+  defaultGraceDays: number;
+  defaultTrialDays: number;
+  defaultTrialDiscountPercent: string;
+  invoiceFooterNote: string | null;
+}
+
+export interface AssignSubscriptionPayload {
+  planId: number;
+  frequency: BillingFrequency;
+  negotiatedDiscountType?: NegotiatedDiscountType;
+  negotiatedDiscountValue?: number;
+  isTrial?: boolean;
+  trialDiscountPercent?: number;
+  trialEndsAt?: string | null;
+  graceDays?: number | null;
+  /** Apply the company-wide volume slabs; off when a deal prices volume in. */
+  applySlabDiscount?: boolean;
+  notes?: string | null;
+  /** Date the plan takes effect; defaults to today. */
+  startDate?: string;
+  skipFirstInvoice?: boolean;
+  /** Issue the first invoice but settle it, for money already received. */
+  markFirstInvoicePaid?: boolean;
+  initialPaymentReference?: string;
+}
+
+export interface JobRunResult {
+  generated: number;
+  skippedExisting: number;
+  failed: number;
+  details: Array<{
+    schoolId: number;
+    schoolName?: string;
+    outcome: 'generated' | 'skipped' | 'failed' | 'preview';
+    invoiceNumber?: string;
+    totalPaise?: number;
+    studentCount?: number;
+    reason?: string;
+  }>;
+}
+
+export interface BillingJobInfo {
+  name: string;
+  requiresMonth: boolean;
+}
+
+// ── Billing: endpoint helpers ────────────────────────────────────────────
+
+export const schoolPlans = {
+  list: (signal?: AbortSignal) =>
+    smsApi.get<BillingPlan[]>('/admin/school-plans', signal),
+  create: (body: Partial<BillingPlan>) =>
+    smsApi.post<BillingPlan>('/admin/school-plans', body),
+  update: (id: number, body: Partial<BillingPlan>) =>
+    smsApi.patch<BillingPlan>(`/admin/school-plans/${id}`, body),
+  remove: (id: number) =>
+    smsApi.delete<{ deleted: boolean; retired: boolean }>(
+      `/admin/school-plans/${id}`,
+    ),
+  featureCatalog: (signal?: AbortSignal) =>
+    smsApi.get<FeatureCatalogEntry[]>('/admin/feature-catalog', signal),
+};
+
+export const adminBilling = {
+  getSubscription: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SchoolBillingOverview>(
+      `/admin/schools/${slug}/subscription`,
+      signal,
+    ),
+  assignSubscription: (slug: string, body: AssignSubscriptionPayload) =>
+    smsApi.put<SchoolSubscription>(`/admin/schools/${slug}/subscription`, body),
+  cancelSubscription: (slug: string) =>
+    smsApi.delete<SchoolSubscription>(`/admin/schools/${slug}/subscription`),
+  extendGrace: (slug: string, graceDays: number) =>
+    smsApi.post<SchoolSubscription>(
+      `/admin/schools/${slug}/subscription/extend-grace`,
+      { graceDays },
+    ),
+  listInvoices: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<BillingInvoice[]>(`/admin/schools/${slug}/invoices`, signal),
+  /** The same payload the school's portal prints its PDF from. */
+  getInvoiceDetail: (slug: string, invoiceId: number, signal?: AbortSignal) =>
+    smsApi.get<InvoiceDetail>(
+      `/admin/schools/${slug}/invoices/${invoiceId}`,
+      signal,
+    ),
+  recordOfflinePayment: (
+    slug: string,
+    invoiceId: number,
+    body: {
+      reference: string;
+      note?: string;
+      /** Omit to settle the whole outstanding balance. */
+      amountPaise?: number;
+      waiveRemainder?: boolean;
+    },
+  ) =>
+    smsApi.post<BillingInvoice>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/record-offline-payment`,
+      body,
+    ),
+  refundInvoice: (
+    slug: string,
+    invoiceId: number,
+    body: {
+      amountPaise: number;
+      reason: string;
+      method?: 'RAZORPAY' | 'OFFLINE';
+      reference?: string;
+      waiveRemainder?: boolean;
+      asCredit?: boolean;
+    },
+  ) =>
+    smsApi.post<BillingRefund>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/refund`,
+      body,
+    ),
+  listRefunds: (slug: string, invoiceId: number, signal?: AbortSignal) =>
+    smsApi.get<BillingRefund[]>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/refunds`,
+      signal,
+    ),
+  getCredit: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<{ balancePaise: number; entries: CreditEntry[] }>(
+      `/admin/schools/${slug}/credit`,
+      signal,
+    ),
+  adjustCredit: (slug: string, body: { deltaPaise: number; reason: string }) =>
+    smsApi.post<{ balancePaise: number }>(`/admin/schools/${slug}/credit`, body),
+  voidInvoice: (slug: string, invoiceId: number, reason: string) =>
+    smsApi.post<BillingInvoice>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/void`,
+      { reason },
+    ),
+  listJobs: () => smsApi.get<BillingJobInfo[]>('/admin/billing/jobs'),
+  runJob: (name: string, body: { targetMonth?: string; dryRun?: boolean }) =>
+    smsApi.post<JobRunResult>(`/admin/billing/run-job/${name}`, body),
+};
+
+export const billingConfig = {
+  get: (signal?: AbortSignal) =>
+    smsApi.get<BillingConfig>('/admin/billing-config', signal),
+  update: (body: Partial<BillingConfig>) =>
+    smsApi.patch<BillingConfig>('/admin/billing-config', body),
+};
+
+// ── Volume slabs (company-wide, shared by every plan) ────────────────────
+
+export interface BillingSlabRow {
+  id: number;
+  minStudents: number;
+  maxStudents: number | null;
+  discountPercent: string;
+}
+
+export const billingSlabs = {
+  list: (signal?: AbortSignal) =>
+    smsApi.get<BillingSlabRow[]>('/admin/billing-slabs', signal),
+  replace: (slabs: PlanSlab[]) =>
+    smsApi.put<BillingSlabRow[]>('/admin/billing-slabs', { slabs }),
+};
+
+// ── Coupons ──────────────────────────────────────────────────────────────
+
+export type CouponDiscountType = 'PERCENT' | 'FLAT';
+export type CouponRedemptionStatus = 'RESERVED' | 'CONSUMED' | 'RELEASED';
+export type CouponStatusFilter = 'ACTIVE' | 'USED' | 'EXPIRED' | 'INACTIVE';
+
+export interface CouponRedemptionRow {
+  schoolId: number;
+  schoolSlug: string | null;
+  schoolName: string | null;
+  invoiceId: number;
+  discountPaise: number;
+  status: CouponRedemptionStatus;
+  appliedAt: string | null;
+}
+
+export interface Coupon {
+  id: number;
+  code: string;
+  description: string | null;
+  discountType: CouponDiscountType;
+  discountValue: string;
+  maxDiscountPaise: string | null;
+  minInvoicePaise: string;
+  maxRedemptions: number;
+  redemptionCount: number;
+  remaining: number;
+  validFrom: string | null;
+  validUntil: string | null;
+  schoolId: number | null;
+  isActive: boolean;
+  createdBy: string | null;
+  notes: string | null;
+  createdAt: string;
+  redeemedBy: CouponRedemptionRow[];
+}
+
+export interface CouponQuery {
+  page?: number;
+  limit?: number;
+  code?: string;
+  status?: CouponStatusFilter;
+  schoolId?: number;
+  mobile?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  appliedFrom?: string;
+  appliedTo?: string;
+}
+
+export interface CreateCouponPayload {
+  code: string;
+  description?: string;
+  discountType: CouponDiscountType;
+  /** Percent when PERCENT, paise when FLAT. */
+  discountValue: number;
+  maxDiscountPaise?: number;
+  minInvoicePaise?: number;
+  maxRedemptions?: number;
+  validFrom?: string;
+  validUntil?: string;
+  schoolId?: number;
+  notes?: string;
+}
+
+export interface PaginatedCoupons {
+  items: Coupon[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export const coupons = {
+  list: (query: CouponQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '' && value !== null) {
+        params.set(key, String(value));
+      }
+    }
+    const qs = params.toString();
+    return smsApi.get<PaginatedCoupons>(
+      `/admin/coupons${qs ? `?${qs}` : ''}`,
+      signal,
+    );
+  },
+  create: (body: CreateCouponPayload) =>
+    smsApi.post<Coupon>('/admin/coupons', body),
+  update: (
+    id: number,
+    body: Partial<{
+      description: string | null;
+      isActive: boolean;
+      validUntil: string | null;
+      maxRedemptions: number;
+      notes: string | null;
+    }>,
+  ) => smsApi.patch<Coupon>(`/admin/coupons/${id}`, body),
+  deactivate: (id: number) => smsApi.delete<Coupon>(`/admin/coupons/${id}`),
+};
+
+/** ₹ formatting for paise amounts — the only money unit the API speaks. */
+export function formatPaise(paise: number | string): string {
+  const value = Number(paise) / 100;
+  return value.toLocaleString('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  });
+}
+
+// Logo URLs used to be assembled here from NEXT_PUBLIC_PUBLIC_ASSETS_URL,
+// which duplicated the bucket name and drifted from sms-backend's. The admin
+// API now returns `school.logoUrl` directly — render that instead.
