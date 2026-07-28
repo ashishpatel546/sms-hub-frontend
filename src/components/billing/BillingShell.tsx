@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 
 const BILLING_NAV = [
   { href: '/dashboard/school-plans', label: 'Plans', icon: '₹' },
+  { href: '/dashboard/coupons', label: 'Coupons', icon: '🎟️' },
   { href: '/dashboard/billing-settings', label: 'Settings', icon: '⚙️' },
 ];
 

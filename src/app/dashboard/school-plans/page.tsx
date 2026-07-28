@@ -11,14 +11,7 @@ import {
   type BillingFrequency,
   type BillingPlan,
   type FeatureCatalogEntry,
-  type PlanSlab,
 } from '@/lib/sms-api';
-
-const EMPTY_SLAB: PlanSlab = {
-  minStudents: 0,
-  maxStudents: null,
-  discountPercent: 0,
-};
 
 /** Rupee input backed by a paise value, so the API only ever sees integers. */
 function RupeeInput({
@@ -45,97 +38,6 @@ function RupeeInput({
         }
         className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
       />
-    </div>
-  );
-}
-
-function SlabEditor({
-  slabs,
-  onChange,
-}: {
-  slabs: PlanSlab[];
-  onChange: (slabs: PlanSlab[]) => void;
-}) {
-  const update = (index: number, patch: Partial<PlanSlab>) =>
-    onChange(slabs.map((s, i) => (i === index ? { ...s, ...patch } : s)));
-
-  return (
-    <div className="space-y-2">
-      {slabs.length === 0 && (
-        <p className="text-xs text-slate-400">
-          No volume slabs — every school pays the list rate.
-        </p>
-      )}
-      {slabs.map((slab, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <input
-            type="number"
-            min={0}
-            value={slab.minStudents}
-            onChange={(e) =>
-              update(index, { minStudents: Number(e.target.value || 0) })
-            }
-            className="w-20 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
-            aria-label="From students"
-          />
-          <span className="text-slate-400 text-xs">to</span>
-          <input
-            type="number"
-            min={0}
-            value={slab.maxStudents ?? ''}
-            placeholder="∞"
-            onChange={(e) =>
-              update(index, {
-                maxStudents:
-                  e.target.value === '' ? null : Number(e.target.value),
-              })
-            }
-            className="w-20 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
-            aria-label="To students"
-          />
-          <span className="text-slate-400 text-xs">→</span>
-          <div className="relative w-24">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step="0.01"
-              value={slab.discountPercent}
-              onChange={(e) =>
-                update(index, { discountPercent: Number(e.target.value || 0) })
-              }
-              className="w-full px-2 py-1.5 pr-6 border border-slate-200 rounded-lg text-xs"
-              aria-label="Discount percent"
-            />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
-              %
-            </span>
-          </div>
-          <button
-            onClick={() => onChange(slabs.filter((_, i) => i !== index))}
-            className="text-slate-300 hover:text-red-500 transition-colors"
-            aria-label="Remove slab"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      ))}
-      <button
-        onClick={() =>
-          onChange([
-            ...slabs,
-            {
-              ...EMPTY_SLAB,
-              minStudents: slabs.length
-                ? (slabs[slabs.length - 1].maxStudents ?? 0) + 1
-                : 0,
-            },
-          ])
-        }
-        className="text-xs font-semibold text-violet-600 hover:text-violet-700"
-      >
-        + Add slab
-      </button>
     </div>
   );
 }
@@ -215,7 +117,6 @@ function PlanCard({
         pricePerStudentPaise: form.pricePerStudentPaise,
         features: form.features,
         frequencyDiscounts: form.frequencyDiscounts,
-        slabs: form.slabs,
         isActive: form.isActive,
         displayOrder: form.displayOrder,
       });
@@ -326,24 +227,12 @@ function PlanCard({
         className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"
       >
         <Layers className="w-3.5 h-3.5" />
-        {expanded ? 'Hide' : 'Show'} slabs &amp; features ({enabledCount}{' '}
+        {expanded ? 'Hide' : 'Show'} features ({enabledCount}{' '}
         feature{enabledCount === 1 ? '' : 's'})
       </button>
 
       {expanded && (
         <>
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Volume slabs
-            </label>
-            <div className="mt-1">
-              <SlabEditor
-                slabs={form.slabs ?? []}
-                onChange={(slabs) => setForm({ ...form, slabs })}
-              />
-            </div>
-          </div>
-
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               Features included
@@ -443,7 +332,6 @@ export default function SchoolPlansPage() {
           HALF_YEARLY: 10,
           ANNUAL: 20,
         } as Partial<Record<BillingFrequency, number>>,
-        slabs: [],
       });
       toast.success(`Plan "${newPlan.name}" created`);
       setShowCreate(false);

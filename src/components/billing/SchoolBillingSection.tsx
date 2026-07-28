@@ -43,6 +43,9 @@ interface SubscriptionForm {
   trialEndsAt: string;
   graceDays: string;
   notes: string;
+  startDate: string;
+  markFirstInvoicePaid: boolean;
+  initialPaymentReference: string;
 }
 
 /**
@@ -93,6 +96,9 @@ export default function SchoolBillingSection({
         graceDays:
           subscription?.graceDays == null ? '' : String(subscription.graceDays),
         notes: subscription?.notes ?? '',
+        startDate: subscription?.currentPeriodStart ?? '',
+        markFirstInvoicePaid: false,
+        initialPaymentReference: '',
       });
     } catch (e: any) {
       toast.error(e?.info?.message ?? 'Could not load billing details');
@@ -123,6 +129,9 @@ export default function SchoolBillingSection({
         trialEndsAt: form.isTrial ? form.trialEndsAt || null : null,
         graceDays: form.graceDays === '' ? null : Number(form.graceDays),
         notes: form.notes || null,
+        startDate: form.startDate || undefined,
+        markFirstInvoicePaid: form.markFirstInvoicePaid,
+        initialPaymentReference: form.initialPaymentReference || undefined,
       });
       toast.success('Subscription saved');
       await load();
@@ -355,6 +364,65 @@ export default function SchoolBillingSection({
             />
           </div>
         </div>
+
+        {!subscription && (
+          <div className="mt-4 border-t pt-4 space-y-3">
+            <p className="text-xs font-medium text-gray-500">
+              Onboarding an existing customer
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Plan starts on
+                </label>
+                <input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) =>
+                    setForm({ ...form, startDate: e.target.value })
+                  }
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Use the date they actually started with us, so renewals land
+                  on the right anniversary. Defaults to today.
+                </p>
+              </div>
+              <div>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.markFirstInvoicePaid}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        markFirstInvoicePaid: e.target.checked,
+                      })
+                    }
+                  />
+                  They have already paid for this period
+                </label>
+                {form.markFirstInvoicePaid && (
+                  <input
+                    value={form.initialPaymentReference}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        initialPaymentReference: e.target.value,
+                      })
+                    }
+                    placeholder="Payment reference (UTR, cheque no.)"
+                    className="w-full mt-2 border rounded-md px-3 py-2 text-sm"
+                  />
+                )}
+                <p className="text-[11px] text-gray-400 mt-1">
+                  The invoice is still issued for the record, but settled
+                  rather than chased.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 border-t pt-4">
           <label className="inline-flex items-center gap-2 text-sm text-gray-700">

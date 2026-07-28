@@ -248,7 +248,6 @@ export interface BillingPlan {
   pricePerStudentPaise: number;
   features: Record<string, boolean>;
   frequencyDiscounts: Partial<Record<BillingFrequency, number>>;
-  slabs: PlanSlab[];
   isActive: boolean;
   displayOrder: number;
   createdAt: string;
@@ -345,7 +344,12 @@ export interface AssignSubscriptionPayload {
   trialEndsAt?: string | null;
   graceDays?: number | null;
   notes?: string | null;
+  /** Date the plan takes effect; defaults to today. */
+  startDate?: string;
   skipFirstInvoice?: boolean;
+  /** Issue the first invoice but settle it, for money already received. */
+  markFirstInvoicePaid?: boolean;
+  initialPaymentReference?: string;
 }
 
 export interface JobRunResult {
@@ -426,6 +430,124 @@ export const billingConfig = {
     smsApi.get<BillingConfig>('/admin/billing-config', signal),
   update: (body: Partial<BillingConfig>) =>
     smsApi.patch<BillingConfig>('/admin/billing-config', body),
+};
+
+// ── Volume slabs (company-wide, shared by every plan) ────────────────────
+
+export interface BillingSlabRow {
+  id: number;
+  minStudents: number;
+  maxStudents: number | null;
+  discountPercent: string;
+}
+
+export const billingSlabs = {
+  list: (signal?: AbortSignal) =>
+    smsApi.get<BillingSlabRow[]>('/admin/billing-slabs', signal),
+  replace: (slabs: PlanSlab[]) =>
+    smsApi.put<BillingSlabRow[]>('/admin/billing-slabs', { slabs }),
+};
+
+// ── Coupons ──────────────────────────────────────────────────────────────
+
+export type CouponDiscountType = 'PERCENT' | 'FLAT';
+export type CouponRedemptionStatus = 'RESERVED' | 'CONSUMED' | 'RELEASED';
+export type CouponStatusFilter = 'ACTIVE' | 'USED' | 'EXPIRED' | 'INACTIVE';
+
+export interface CouponRedemptionRow {
+  schoolId: number;
+  schoolSlug: string | null;
+  schoolName: string | null;
+  invoiceId: number;
+  discountPaise: number;
+  status: CouponRedemptionStatus;
+  appliedAt: string | null;
+}
+
+export interface Coupon {
+  id: number;
+  code: string;
+  description: string | null;
+  discountType: CouponDiscountType;
+  discountValue: string;
+  maxDiscountPaise: string | null;
+  minInvoicePaise: string;
+  maxRedemptions: number;
+  redemptionCount: number;
+  remaining: number;
+  validFrom: string | null;
+  validUntil: string | null;
+  schoolId: number | null;
+  isActive: boolean;
+  createdBy: string | null;
+  notes: string | null;
+  createdAt: string;
+  redeemedBy: CouponRedemptionRow[];
+}
+
+export interface CouponQuery {
+  page?: number;
+  limit?: number;
+  code?: string;
+  status?: CouponStatusFilter;
+  schoolId?: number;
+  mobile?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  appliedFrom?: string;
+  appliedTo?: string;
+}
+
+export interface CreateCouponPayload {
+  code: string;
+  description?: string;
+  discountType: CouponDiscountType;
+  /** Percent when PERCENT, paise when FLAT. */
+  discountValue: number;
+  maxDiscountPaise?: number;
+  minInvoicePaise?: number;
+  maxRedemptions?: number;
+  validFrom?: string;
+  validUntil?: string;
+  schoolId?: number;
+  notes?: string;
+}
+
+export interface PaginatedCoupons {
+  items: Coupon[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export const coupons = {
+  list: (query: CouponQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '' && value !== null) {
+        params.set(key, String(value));
+      }
+    }
+    const qs = params.toString();
+    return smsApi.get<PaginatedCoupons>(
+      `/admin/coupons${qs ? `?${qs}` : ''}`,
+      signal,
+    );
+  },
+  create: (body: CreateCouponPayload) =>
+    smsApi.post<Coupon>('/admin/coupons', body),
+  update: (
+    id: number,
+    body: Partial<{
+      description: string | null;
+      isActive: boolean;
+      validUntil: string | null;
+      maxRedemptions: number;
+      notes: string | null;
+    }>,
+  ) => smsApi.patch<Coupon>(`/admin/coupons/${id}`, body),
+  deactivate: (id: number) => smsApi.delete<Coupon>(`/admin/coupons/${id}`),
 };
 
 /** ₹ formatting for paise amounts — the only money unit the API speaks. */

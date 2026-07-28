@@ -2,14 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Building2, PlayCircle, Receipt, ShieldAlert } from 'lucide-react';
+import {
+  Building2,
+  Layers,
+  PlayCircle,
+  Receipt,
+  ShieldAlert,
+  Trash2,
+} from 'lucide-react';
 import {
   adminBilling,
   billingConfig,
+  billingSlabs,
   formatPaise,
   type BillingConfig,
   type BillingJobInfo,
   type JobRunResult,
+  type PlanSlab,
 } from '@/lib/sms-api';
 
 const JOB_LABELS: Record<string, { label: string; description: string }> = {
@@ -232,6 +241,164 @@ function RunBillingPanel() {
   );
 }
 
+/**
+ * The volume ladder, shared by every plan.
+ *
+ * Volume pricing is a company-wide policy rather than a per-plan setting: a
+ * 900-student school earns the same break whichever plan it is on, and keeping
+ * a copy on each plan only guarantees they drift apart.
+ */
+function VolumeSlabsPanel() {
+  const [slabs, setSlabs] = useState<PlanSlab[] | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    billingSlabs
+      .list()
+      .then((rows) =>
+        setSlabs(
+          rows.map((r) => ({
+            minStudents: r.minStudents,
+            maxStudents: r.maxStudents,
+            discountPercent: Number(r.discountPercent),
+          })),
+        ),
+      )
+      .catch(() => toast.error('Could not load the volume slabs'));
+  }, []);
+
+  const update = (index: number, patch: Partial<PlanSlab>) =>
+    setSlabs((current) =>
+      current
+        ? current.map((s, i) => (i === index ? { ...s, ...patch } : s))
+        : current,
+    );
+
+  const save = async () => {
+    if (!slabs) return;
+    setSaving(true);
+    try {
+      await billingSlabs.replace(slabs);
+      toast.success('Volume slabs saved');
+    } catch (e: any) {
+      toast.error(e?.info?.message ?? 'Could not save the slabs');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!slabs) {
+    return <div className="h-32 bg-slate-100 rounded-2xl animate-pulse" />;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Layers className="w-4 h-4 text-violet-600" />
+        <h2 className="text-sm font-bold text-slate-900">Volume discounts</h2>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Applied to every plan, based on the school&apos;s student count. Bands
+        must not overlap, and only the last one may be left open-ended.
+      </p>
+
+      <div className="space-y-2">
+        {slabs.length === 0 && (
+          <p className="text-xs text-slate-400">
+            No bands — every school pays the list rate.
+          </p>
+        )}
+        {slabs.map((slab, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              value={slab.minStudents}
+              onChange={(e) =>
+                update(index, { minStudents: Number(e.target.value || 0) })
+              }
+              className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+              aria-label="From students"
+            />
+            <span className="text-slate-400 text-xs">to</span>
+            <input
+              type="number"
+              min={0}
+              value={slab.maxStudents ?? ''}
+              placeholder="and above"
+              onChange={(e) =>
+                update(index, {
+                  maxStudents:
+                    e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+              aria-label="To students"
+            />
+            <span className="text-slate-400 text-xs">students →</span>
+            <div className="relative w-24">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={slab.discountPercent}
+                onChange={(e) =>
+                  update(index, {
+                    discountPercent: Number(e.target.value || 0),
+                  })
+                }
+                className="w-full px-2 py-1.5 pr-6 border border-slate-200 rounded-lg text-xs"
+                aria-label="Discount percent"
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                %
+              </span>
+            </div>
+            <button
+              onClick={() =>
+                setSlabs(slabs.filter((_, i) => i !== index))
+              }
+              className="text-slate-300 hover:text-red-500 transition-colors"
+              aria-label="Remove band"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() =>
+            setSlabs([
+              ...slabs,
+              {
+                minStudents: slabs.length
+                  ? (slabs[slabs.length - 1].maxStudents ?? 0) + 1
+                  : 0,
+                maxStudents: null,
+                discountPercent: 0,
+              },
+            ])
+          }
+          className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+        >
+          + Add band
+        </button>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:bg-slate-300"
+        >
+          {saving ? 'Saving…' : 'Save slabs'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -318,6 +485,8 @@ export default function BillingSettingsPage() {
       </div>
 
       <RunBillingPanel />
+
+      <VolumeSlabsPanel />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
         <div className="flex items-center gap-2">
