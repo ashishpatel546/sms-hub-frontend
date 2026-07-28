@@ -301,6 +301,14 @@ export interface BillingInvoice {
     trialPaise: number;
     totalDiscountPaise: number;
   };
+  /** How the invoice was actually settled, when it has been. */
+  settlement: {
+    amountPaidPaise: number;
+    couponCode: string | null;
+    couponDiscountPaise: number;
+    method: 'RAZORPAY' | 'OFFLINE';
+    reference: string | null;
+  } | null;
 }
 
 export interface SchoolBillingOverview {

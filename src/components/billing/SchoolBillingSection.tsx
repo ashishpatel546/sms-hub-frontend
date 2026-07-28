@@ -557,6 +557,15 @@ export default function SchoolBillingSection({
                     <td className="py-2 pr-3">{invoice.studentCount}</td>
                     <td className="py-2 pr-3 font-medium">
                       {formatPaise(invoice.totalPaise)}
+                      {invoice.settlement &&
+                        invoice.settlement.couponDiscountPaise > 0 && (
+                          <p className="text-[11px] font-normal text-emerald-700">
+                            received{' '}
+                            {formatPaise(invoice.settlement.amountPaidPaise)}
+                            {invoice.settlement.couponCode &&
+                              ` · coupon ${invoice.settlement.couponCode}`}
+                          </p>
+                        )}
                     </td>
                     <td className="py-2 pr-3 text-xs text-gray-600">
                       {formatDate(invoice.dueDate)}
