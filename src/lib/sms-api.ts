@@ -270,6 +270,7 @@ export interface SchoolSubscription {
   trialDiscountPercent: string;
   trialEndsAt: string | null;
   graceDays: number | null;
+  applySlabDiscount: boolean;
   notes: string | null;
 }
 
@@ -351,6 +352,8 @@ export interface AssignSubscriptionPayload {
   trialDiscountPercent?: number;
   trialEndsAt?: string | null;
   graceDays?: number | null;
+  /** Apply the company-wide volume slabs; off when a deal prices volume in. */
+  applySlabDiscount?: boolean;
   notes?: string | null;
   /** Date the plan takes effect; defaults to today. */
   startDate?: string;

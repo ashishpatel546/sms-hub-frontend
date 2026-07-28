@@ -17,10 +17,10 @@ import {
 } from '@/lib/sms-api';
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
-  PAID: 'bg-emerald-100 text-emerald-700',
-  PENDING: 'bg-amber-100 text-amber-700',
-  OVERDUE: 'bg-red-100 text-red-700',
-  VOID: 'bg-slate-100 text-slate-500',
+  PAID: 'bg-mint-tint text-mint',
+  PENDING: 'bg-amber-tint text-amber',
+  OVERDUE: 'bg-rose-tint text-rose',
+  VOID: 'bg-ink-700 text-chalk-dim',
 };
 
 function formatDate(value: string | null): string {
@@ -42,6 +42,7 @@ interface SubscriptionForm {
   trialDiscountPercent: number;
   trialEndsAt: string;
   graceDays: string;
+  applySlabDiscount: boolean;
   notes: string;
   startDate: string;
   markFirstInvoicePaid: boolean;
@@ -95,6 +96,7 @@ export default function SchoolBillingSection({
         trialEndsAt: subscription?.trialEndsAt ?? '',
         graceDays:
           subscription?.graceDays == null ? '' : String(subscription.graceDays),
+        applySlabDiscount: subscription?.applySlabDiscount ?? true,
         notes: subscription?.notes ?? '',
         startDate: subscription?.currentPeriodStart ?? '',
         markFirstInvoicePaid: false,
@@ -128,6 +130,7 @@ export default function SchoolBillingSection({
         trialDiscountPercent: form.trialDiscountPercent,
         trialEndsAt: form.isTrial ? form.trialEndsAt || null : null,
         graceDays: form.graceDays === '' ? null : Number(form.graceDays),
+        applySlabDiscount: form.applySlabDiscount,
         notes: form.notes || null,
         startDate: form.startDate || undefined,
         markFirstInvoicePaid: form.markFirstInvoicePaid,
@@ -193,8 +196,8 @@ export default function SchoolBillingSection({
 
   if (loading || !form) {
     return (
-      <section className="bg-white rounded-lg shadow p-6">
-        <div className="h-40 bg-slate-100 rounded animate-pulse" />
+      <section className="bg-ink-800 rounded-lg shadow p-6">
+        <div className="h-40 bg-ink-700 rounded animate-pulse" />
       </section>
     );
   }
@@ -205,11 +208,11 @@ export default function SchoolBillingSection({
 
   return (
     <>
-      <section className="bg-white rounded-lg shadow p-6">
+      <section className="bg-ink-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between border-b pb-2 mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">Subscription</h2>
+          <h2 className="text-lg font-semibold text-chalk">Subscription</h2>
           {subscription?.isTrial && (
-            <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs font-semibold">
+            <span className="px-2 py-0.5 rounded-full bg-mint-tint text-mint text-xs font-semibold">
               TRIAL until {formatDate(subscription.trialEndsAt)}
             </span>
           )}
@@ -217,30 +220,30 @@ export default function SchoolBillingSection({
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           <div>
-            <p className="text-xs text-gray-400">Billable students</p>
-            <p className="text-lg font-semibold text-gray-800">{students}</p>
+            <p className="text-xs text-chalk-faint">Billable students</p>
+            <p className="text-lg font-semibold text-chalk">{students}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Paid for</p>
-            <p className="text-lg font-semibold text-gray-800">
+            <p className="text-xs text-chalk-faint">Paid for</p>
+            <p className="text-lg font-semibold text-chalk">
               {subscription?.baselineStudentCount ?? '—'}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Outstanding</p>
+            <p className="text-xs text-chalk-faint">Outstanding</p>
             <p
               className={`text-lg font-semibold ${
                 (overview?.outstandingPaise ?? 0) > 0
-                  ? 'text-red-600'
-                  : 'text-emerald-600'
+                  ? 'text-rose'
+                  : 'text-mint'
               }`}
             >
               {formatPaise(overview?.outstandingPaise ?? 0)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Renews</p>
-            <p className="text-lg font-semibold text-gray-800">
+            <p className="text-xs text-chalk-faint">Renews</p>
+            <p className="text-lg font-semibold text-chalk">
               {formatDate(subscription?.currentPeriodEnd ?? null)}
             </p>
           </div>
@@ -248,7 +251,7 @@ export default function SchoolBillingSection({
 
         {students > (subscription?.baselineStudentCount ?? 0) &&
           subscription && (
-            <p className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+            <p className="mb-4 text-xs text-amber bg-amber-tint border border-amber-100 rounded-md px-3 py-2">
               {students - subscription.baselineStudentCount} student(s) admitted
               above the paid count. They will be billed in the next month-end
               true-up.
@@ -257,7 +260,7 @@ export default function SchoolBillingSection({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label className="field-label">
               Plan
             </label>
             <select
@@ -268,7 +271,7 @@ export default function SchoolBillingSection({
                   planId: e.target.value === '' ? '' : Number(e.target.value),
                 })
               }
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
             >
               <option value="">— Select a plan —</option>
               {plans
@@ -284,7 +287,7 @@ export default function SchoolBillingSection({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label className="field-label">
               Pays every
             </label>
             <select
@@ -295,7 +298,7 @@ export default function SchoolBillingSection({
                   frequency: e.target.value as BillingFrequency,
                 })
               }
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
             >
               {BILLING_FREQUENCIES.map((frequency) => (
                 <option key={frequency} value={frequency}>
@@ -309,7 +312,7 @@ export default function SchoolBillingSection({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label className="field-label">
               Negotiated discount
             </label>
             <div className="flex gap-2">
@@ -322,7 +325,7 @@ export default function SchoolBillingSection({
                       .value as NegotiatedDiscountType,
                   })
                 }
-                className="border rounded-md px-3 py-2 text-sm bg-white"
+                className="border rounded-md px-3 py-2 text-sm bg-ink-800"
               >
                 <option value="NONE">None</option>
                 <option value="PERCENT">Percent</option>
@@ -340,18 +343,34 @@ export default function SchoolBillingSection({
                     negotiatedDiscountValue: Number(e.target.value || 0),
                   })
                 }
-                className="flex-1 border rounded-md px-3 py-2 text-sm disabled:bg-slate-50"
+                className="flex-1 border rounded-md px-3 py-2 text-sm disabled:bg-ink-850"
               />
             </div>
             {form.negotiatedDiscountType === 'FLAT' && (
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[11px] text-chalk-faint mt-1">
                 Applies to each period invoice, not to monthly true-ups.
+              </p>
+            )}
+            <label className="mt-2 inline-flex items-center gap-2 text-xs text-chalk-dim">
+              <input
+                type="checkbox"
+                checked={form.applySlabDiscount}
+                onChange={(e) =>
+                  setForm({ ...form, applySlabDiscount: e.target.checked })
+                }
+              />
+              Also apply the volume slab discount
+            </label>
+            {!form.applySlabDiscount && (
+              <p className="text-[11px] text-amber-500 mt-1">
+                Volume slabs are off for this school — usually because the
+                negotiated rate already accounts for their size.
               </p>
             )}
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label className="field-label">
               Grace days before suspension
             </label>
             <input
@@ -367,12 +386,12 @@ export default function SchoolBillingSection({
 
         {!subscription && (
           <div className="mt-4 border-t pt-4 space-y-3">
-            <p className="text-xs font-medium text-gray-500">
+            <p className="text-xs font-medium text-chalk-dim">
               Onboarding an existing customer
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Plan starts on
                 </label>
                 <input
@@ -383,13 +402,13 @@ export default function SchoolBillingSection({
                   }
                   className="w-full border rounded-md px-3 py-2 text-sm"
                 />
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-chalk-faint mt-1">
                   Use the date they actually started with us, so renewals land
                   on the right anniversary. Defaults to today.
                 </p>
               </div>
               <div>
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <label className="inline-flex items-center gap-2 text-sm text-chalk-soft">
                   <input
                     type="checkbox"
                     checked={form.markFirstInvoicePaid}
@@ -415,7 +434,7 @@ export default function SchoolBillingSection({
                     className="w-full mt-2 border rounded-md px-3 py-2 text-sm"
                   />
                 )}
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-chalk-faint mt-1">
                   The invoice is still issued for the record, but settled
                   rather than chased.
                 </p>
@@ -425,7 +444,7 @@ export default function SchoolBillingSection({
         )}
 
         <div className="mt-4 border-t pt-4">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm text-chalk-soft">
             <input
               type="checkbox"
               checked={form.isTrial}
@@ -437,7 +456,7 @@ export default function SchoolBillingSection({
           {form.isTrial && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Trial discount %
                 </label>
                 <input
@@ -455,7 +474,7 @@ export default function SchoolBillingSection({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Trial ends on
                 </label>
                 <input
@@ -466,7 +485,7 @@ export default function SchoolBillingSection({
                   }
                   className="w-full border rounded-md px-3 py-2 text-sm"
                 />
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-chalk-faint mt-1">
                   Leave blank to use the platform default trial length.
                 </p>
               </div>
@@ -475,7 +494,7 @@ export default function SchoolBillingSection({
         </div>
 
         <div className="mt-4">
-          <label className="block text-xs font-medium text-gray-500 mb-1">
+          <label className="field-label">
             Commercial notes
           </label>
           <textarea
@@ -488,7 +507,7 @@ export default function SchoolBillingSection({
         </div>
 
         <div className="mt-4 flex justify-between items-center">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-chalk-faint">
             {subscription
               ? 'Saving updates the terms from the next invoice onwards. Invoices already issued never change.'
               : 'Saving subscribes the school and issues its first invoice.'}
@@ -496,7 +515,7 @@ export default function SchoolBillingSection({
           <button
             onClick={() => void save()}
             disabled={saving}
-            className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
           >
             {saving
               ? 'Saving…'
@@ -507,19 +526,19 @@ export default function SchoolBillingSection({
         </div>
       </section>
 
-      <section className="bg-white rounded-lg shadow p-6">
+      <section className="bg-ink-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between border-b pb-2 mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">Invoices</h2>
+          <h2 className="text-lg font-semibold text-chalk">Invoices</h2>
           <button
             onClick={() => void extendGrace()}
-            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            className="text-xs font-medium text-mint hover:text-mint-bright"
           >
             Extend grace period
           </button>
         </div>
 
         {invoices.length === 0 ? (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-chalk-faint">
             No invoices yet. The first one is issued when a subscription is
             assigned.
           </p>
@@ -527,7 +546,7 @@ export default function SchoolBillingSection({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-400 border-b">
+                <tr className="text-left text-xs text-chalk-faint border-b">
                   <th className="pb-2 pr-3">Invoice</th>
                   <th className="pb-2 pr-3">Period</th>
                   <th className="pb-2 pr-3">Students</th>
@@ -537,7 +556,7 @@ export default function SchoolBillingSection({
                   <th className="pb-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {invoices.map((invoice) => (
                   <tr key={invoice.id}>
                     <td className="py-2 pr-3">
@@ -545,12 +564,12 @@ export default function SchoolBillingSection({
                         {invoice.invoiceNumber}
                       </span>
                       {invoice.type === 'TRUEUP' && (
-                        <span className="ml-1 text-[10px] text-violet-600 font-semibold">
+                        <span className="ml-1 text-[10px] text-mint font-semibold">
                           TRUE-UP
                         </span>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-gray-600">
+                    <td className="py-2 pr-3 text-xs text-chalk-soft">
                       {formatDate(invoice.periodStart)} –{' '}
                       {formatDate(invoice.periodEnd)}
                     </td>
@@ -559,7 +578,7 @@ export default function SchoolBillingSection({
                       {formatPaise(invoice.totalPaise)}
                       {invoice.settlement &&
                         invoice.settlement.couponDiscountPaise > 0 && (
-                          <p className="text-[11px] font-normal text-emerald-700">
+                          <p className="text-[11px] font-normal text-mint">
                             received{' '}
                             {formatPaise(invoice.settlement.amountPaidPaise)}
                             {invoice.settlement.couponCode &&
@@ -567,7 +586,7 @@ export default function SchoolBillingSection({
                           </p>
                         )}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-gray-600">
+                    <td className="py-2 pr-3 text-xs text-chalk-soft">
                       {formatDate(invoice.dueDate)}
                     </td>
                     <td className="py-2 pr-3">
@@ -583,13 +602,13 @@ export default function SchoolBillingSection({
                           <>
                             <button
                               onClick={() => void recordPayment(invoice)}
-                              className="text-xs text-blue-600 hover:text-blue-700 mr-3"
+                              className="text-xs text-mint hover:text-mint-bright mr-3"
                             >
                               Record payment
                             </button>
                             <button
                               onClick={() => void voidInvoice(invoice)}
-                              className="text-xs text-gray-400 hover:text-red-600"
+                              className="text-xs text-chalk-faint hover:text-rose"
                             >
                               Void
                             </button>
