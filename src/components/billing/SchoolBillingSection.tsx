@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Download } from 'lucide-react';
 import {
   adminBilling,
   schoolPlans,
@@ -11,16 +12,31 @@ import {
   type BillingFrequency,
   type BillingInvoice,
   type BillingPlan,
+  type CreditEntry,
   type InvoiceStatus,
   type NegotiatedDiscountType,
   type SchoolBillingOverview,
 } from '@/lib/sms-api';
+import { downloadInvoicePdf } from '@/lib/billing-invoice-pdf';
+import {
+  RecordPaymentDialog,
+  RefundDialog,
+} from './InvoiceMoneyDialogs';
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
   PAID: 'bg-mint-tint text-mint',
+  PARTIALLY_PAID: 'bg-amber-tint text-amber',
   PENDING: 'bg-amber-tint text-amber',
   OVERDUE: 'bg-rose-tint text-rose',
   VOID: 'bg-ink-700 text-chalk-dim',
+};
+
+const STATUS_LABELS: Record<InvoiceStatus, string> = {
+  PAID: 'PAID',
+  PARTIALLY_PAID: 'PART PAID',
+  PENDING: 'PENDING',
+  OVERDUE: 'OVERDUE',
+  VOID: 'VOID',
 };
 
 function formatDate(value: string | null): string {
@@ -65,21 +81,34 @@ export default function SchoolBillingSection({
   const [overview, setOverview] = useState<SchoolBillingOverview | null>(null);
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const [credit, setCredit] = useState<{
+    balancePaise: number;
+    entries: CreditEntry[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<SubscriptionForm | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [payingInvoice, setPayingInvoice] = useState<BillingInvoice | null>(
+    null,
+  );
+  const [refundingInvoice, setRefundingInvoice] =
+    useState<BillingInvoice | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewData, planList, invoiceList] = await Promise.all([
-        adminBilling.getSubscription(slug),
-        schoolPlans.list(),
-        adminBilling.listInvoices(slug),
-      ]);
+      const [overviewData, planList, invoiceList, creditData] =
+        await Promise.all([
+          adminBilling.getSubscription(slug),
+          schoolPlans.list(),
+          adminBilling.listInvoices(slug),
+          adminBilling.getCredit(slug),
+        ]);
       setOverview(overviewData);
       setPlans(planList);
       setInvoices(invoiceList);
+      setCredit(creditData);
 
       const subscription = overviewData.subscription;
       setForm({
@@ -163,20 +192,44 @@ export default function SchoolBillingSection({
     }
   };
 
-  const recordPayment = async (invoice: BillingInvoice) => {
-    const reference = prompt(
-      `Reference for the ${formatPaise(invoice.totalPaise)} payment against ${invoice.invoiceNumber} (cheque no., UTR, receipt no.):`,
-    );
-    if (!reference?.trim()) return;
+  /**
+   * Prints the same PDF the school gets from its own portal, by asking the
+   * API for the same payload rather than rebuilding the document here.
+   */
+  const download = async (invoice: BillingInvoice) => {
+    setDownloadingId(invoice.id);
     try {
-      await adminBilling.recordOfflinePayment(slug, invoice.id, {
-        reference: reference.trim(),
-      });
-      toast.success('Payment recorded');
-      await load();
-      onSchoolChanged?.();
+      const detail = await adminBilling.getInvoiceDetail(slug, invoice.id);
+      await downloadInvoicePdf(detail);
     } catch (e: any) {
-      toast.error(e?.info?.message ?? 'Could not record the payment');
+      toast.error(e?.info?.message ?? 'Could not prepare the invoice PDF');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const adjustCredit = async () => {
+    const answer = prompt(
+      'Credit to add, in rupees. Use a negative number to take credit away.',
+      '0',
+    );
+    if (answer === null) return;
+    const rupees = Number(answer);
+    if (!Number.isFinite(rupees) || rupees === 0) {
+      return toast.error('Enter an amount');
+    }
+    const reason = prompt('Why is this credit being adjusted?');
+    if (!reason?.trim()) return;
+
+    try {
+      await adminBilling.adjustCredit(slug, {
+        deltaPaise: Math.round(rupees * 100),
+        reason: reason.trim(),
+      });
+      toast.success('Credit updated');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.info?.message ?? 'Could not adjust the credit');
     }
   };
 
@@ -248,6 +301,67 @@ export default function SchoolBillingSection({
             </p>
           </div>
         </div>
+
+        {/*
+          Credit is money we hold that belongs to the school, so it reads as a
+          separate fact from what they owe rather than as a negative balance
+          buried in the outstanding figure.
+        */}
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-ink-850 px-4 py-3">
+          <div>
+            <p className="text-xs text-chalk-faint">Account credit</p>
+            <p
+              className={`text-lg font-semibold ${
+                (credit?.balancePaise ?? 0) > 0 ? 'text-mint' : 'text-chalk'
+              }`}
+            >
+              {formatPaise(credit?.balancePaise ?? 0)}
+            </p>
+            <p className="mt-0.5 text-[11px] text-chalk-faint">
+              {(credit?.balancePaise ?? 0) > 0
+                ? 'Comes off their next invoice automatically.'
+                : 'Overpayments and held refunds land here.'}
+            </p>
+          </div>
+          <button
+            onClick={() => void adjustCredit()}
+            className="text-xs font-medium text-mint hover:text-mint-bright"
+          >
+            Adjust credit
+          </button>
+        </div>
+
+        {credit && credit.entries.length > 0 && (
+          <details className="mb-5">
+            <summary className="cursor-pointer text-xs text-chalk-dim hover:text-chalk">
+              Credit history ({credit.entries.length})
+            </summary>
+            <ul className="mt-2 divide-y divide-line rounded-md border border-line">
+              {credit.entries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                >
+                  <span className="min-w-0 truncate text-chalk-soft">
+                    {entry.reason}
+                    <span className="text-chalk-faint">
+                      {' '}
+                      · {formatDate(entry.createdAt)}
+                    </span>
+                  </span>
+                  <span
+                    className={`shrink-0 font-medium ${
+                      Number(entry.deltaPaise) >= 0 ? 'text-mint' : 'text-rose'
+                    }`}
+                  >
+                    {Number(entry.deltaPaise) >= 0 ? '+' : '−'}
+                    {formatPaise(Math.abs(Number(entry.deltaPaise)))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         {students > (subscription?.baselineStudentCount ?? 0) &&
           subscription && (
@@ -550,7 +664,8 @@ export default function SchoolBillingSection({
                   <th className="pb-2 pr-3">Invoice</th>
                   <th className="pb-2 pr-3">Period</th>
                   <th className="pb-2 pr-3">Students</th>
-                  <th className="pb-2 pr-3">Amount</th>
+                  <th className="pb-2 pr-3">Billed</th>
+                  <th className="pb-2 pr-3">Balance</th>
                   <th className="pb-2 pr-3">Due</th>
                   <th className="pb-2 pr-3">Status</th>
                   <th className="pb-2" />
@@ -576,15 +691,25 @@ export default function SchoolBillingSection({
                     <td className="py-2 pr-3">{invoice.studentCount}</td>
                     <td className="py-2 pr-3 font-medium">
                       {formatPaise(invoice.totalPaise)}
-                      {invoice.settlement &&
-                        invoice.settlement.couponDiscountPaise > 0 && (
+                      {invoice.settledPaise > 0 &&
+                        invoice.balancePaise > 0 && (
                           <p className="text-[11px] font-normal text-mint">
-                            received{' '}
-                            {formatPaise(invoice.settlement.amountPaidPaise)}
-                            {invoice.settlement.couponCode &&
+                            {formatPaise(invoice.settledPaise)} settled
+                            {invoice.settlement?.couponCode &&
                               ` · coupon ${invoice.settlement.couponCode}`}
                           </p>
                         )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {invoice.status === 'VOID' ? (
+                        <span className="text-xs text-chalk-faint">—</span>
+                      ) : invoice.balancePaise > 0 ? (
+                        <span className="font-medium text-rose">
+                          {formatPaise(invoice.balancePaise)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-mint">Settled</span>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-xs text-chalk-soft">
                       {formatDate(invoice.dueDate)}
@@ -593,26 +718,46 @@ export default function SchoolBillingSection({
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES[invoice.status]}`}
                       >
-                        {invoice.status}
+                        {STATUS_LABELS[invoice.status]}
                       </span>
                     </td>
                     <td className="py-2 text-right whitespace-nowrap">
-                      {invoice.status !== 'PAID' &&
-                        invoice.status !== 'VOID' && (
-                          <>
-                            <button
-                              onClick={() => void recordPayment(invoice)}
-                              className="text-xs text-mint hover:text-mint-bright mr-3"
-                            >
-                              Record payment
-                            </button>
-                            <button
-                              onClick={() => void voidInvoice(invoice)}
-                              className="text-xs text-chalk-faint hover:text-rose"
-                            >
-                              Void
-                            </button>
-                          </>
+                      <button
+                        onClick={() => void download(invoice)}
+                        disabled={downloadingId === invoice.id}
+                        title="Download the invoice PDF"
+                        className="inline-flex items-center gap-1 text-xs text-chalk-dim hover:text-chalk mr-3 disabled:opacity-50"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        {downloadingId === invoice.id ? 'Preparing…' : 'PDF'}
+                      </button>
+
+                      {invoice.status !== 'VOID' && invoice.balancePaise > 0 && (
+                        <button
+                          onClick={() => setPayingInvoice(invoice)}
+                          className="text-xs text-mint hover:text-mint-bright mr-3"
+                        >
+                          Record payment
+                        </button>
+                      )}
+
+                      {invoice.status !== 'VOID' && invoice.settledPaise > 0 && (
+                        <button
+                          onClick={() => setRefundingInvoice(invoice)}
+                          className="text-xs text-amber hover:text-amber-300 mr-3"
+                        >
+                          Return money
+                        </button>
+                      )}
+
+                      {invoice.status !== 'VOID' &&
+                        invoice.settledPaise <= 0 && (
+                          <button
+                            onClick={() => void voidInvoice(invoice)}
+                            className="text-xs text-chalk-faint hover:text-rose"
+                          >
+                            Void
+                          </button>
                         )}
                     </td>
                   </tr>
@@ -622,6 +767,32 @@ export default function SchoolBillingSection({
           </div>
         )}
       </section>
+
+      {payingInvoice && (
+        <RecordPaymentDialog
+          open
+          onClose={() => setPayingInvoice(null)}
+          slug={slug}
+          invoice={payingInvoice}
+          onDone={() => {
+            void load();
+            onSchoolChanged?.();
+          }}
+        />
+      )}
+
+      {refundingInvoice && (
+        <RefundDialog
+          open
+          onClose={() => setRefundingInvoice(null)}
+          slug={slug}
+          invoice={refundingInvoice}
+          onDone={() => {
+            void load();
+            onSchoolChanged?.();
+          }}
+        />
+      )}
     </>
   );
 }

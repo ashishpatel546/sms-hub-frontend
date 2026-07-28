@@ -1,4 +1,7 @@
 import { getToken, logout } from './auth';
+import type { InvoiceDetail } from './billing-invoice-pdf';
+
+export type { InvoiceDetail };
 
 /**
  * Typed client for `sms-backend` (the per-school API). Reuses the
@@ -108,6 +111,12 @@ export interface School extends SchoolProfile {
   onboardedAt: string | null;
   suspendedAt: string | null;
   logoUpdatedAt: string | null;
+  /**
+   * Ready-to-render logo URL resolved by sms-backend, already cache-busted
+   * with `?v=<logoUpdatedAt>`. `null` when no logo has been uploaded. The hub
+   * never builds this itself — the bucket layout is the backend's business.
+   */
+  logoUrl: string | null;
   createdAt: string;
   updatedAt: string;
   studentCount?: number;
@@ -224,7 +233,12 @@ export const FREQUENCY_LABELS: Record<BillingFrequency, string> = {
 
 export type NegotiatedDiscountType = 'NONE' | 'PERCENT' | 'FLAT';
 export type InvoiceType = 'PERIOD' | 'TRUEUP';
-export type InvoiceStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'VOID';
+export type InvoiceStatus =
+  | 'PENDING'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'OVERDUE'
+  | 'VOID';
 
 export interface PlanSlab {
   minStudents: number;
@@ -310,6 +324,33 @@ export interface BillingInvoice {
     method: 'RAZORPAY' | 'OFFLINE';
     reference: string | null;
   } | null;
+  /** Cash in, minus anything sent back, plus credit and write-offs. */
+  settledPaise: number;
+  /** What is still owed. Zero on a settled invoice. */
+  balancePaise: number;
+}
+
+export type RefundStatus = 'PENDING' | 'PROCESSED' | 'FAILED';
+
+export interface BillingRefund {
+  id: number;
+  amountPaise: number;
+  creditedPaise: number;
+  waivedPaise: number;
+  status: RefundStatus;
+  method: 'RAZORPAY' | 'OFFLINE';
+  reason: string;
+  reference: string | null;
+  createdAt: string;
+}
+
+export interface CreditEntry {
+  id: number;
+  deltaPaise: string;
+  reason: string;
+  invoiceId: number | null;
+  createdBy: string | null;
+  createdAt: string;
 }
 
 export interface SchoolBillingOverview {
@@ -417,15 +458,55 @@ export const adminBilling = {
     ),
   listInvoices: (slug: string, signal?: AbortSignal) =>
     smsApi.get<BillingInvoice[]>(`/admin/schools/${slug}/invoices`, signal),
+  /** The same payload the school's portal prints its PDF from. */
+  getInvoiceDetail: (slug: string, invoiceId: number, signal?: AbortSignal) =>
+    smsApi.get<InvoiceDetail>(
+      `/admin/schools/${slug}/invoices/${invoiceId}`,
+      signal,
+    ),
   recordOfflinePayment: (
     slug: string,
     invoiceId: number,
-    body: { reference: string; note?: string },
+    body: {
+      reference: string;
+      note?: string;
+      /** Omit to settle the whole outstanding balance. */
+      amountPaise?: number;
+      waiveRemainder?: boolean;
+    },
   ) =>
     smsApi.post<BillingInvoice>(
       `/admin/schools/${slug}/invoices/${invoiceId}/record-offline-payment`,
       body,
     ),
+  refundInvoice: (
+    slug: string,
+    invoiceId: number,
+    body: {
+      amountPaise: number;
+      reason: string;
+      method?: 'RAZORPAY' | 'OFFLINE';
+      reference?: string;
+      waiveRemainder?: boolean;
+      asCredit?: boolean;
+    },
+  ) =>
+    smsApi.post<BillingRefund>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/refund`,
+      body,
+    ),
+  listRefunds: (slug: string, invoiceId: number, signal?: AbortSignal) =>
+    smsApi.get<BillingRefund[]>(
+      `/admin/schools/${slug}/invoices/${invoiceId}/refunds`,
+      signal,
+    ),
+  getCredit: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<{ balancePaise: number; entries: CreditEntry[] }>(
+      `/admin/schools/${slug}/credit`,
+      signal,
+    ),
+  adjustCredit: (slug: string, body: { deltaPaise: number; reason: string }) =>
+    smsApi.post<{ balancePaise: number }>(`/admin/schools/${slug}/credit`, body),
   voidInvoice: (slug: string, invoiceId: number, reason: string) =>
     smsApi.post<BillingInvoice>(
       `/admin/schools/${slug}/invoices/${invoiceId}/void`,
@@ -571,26 +652,6 @@ export function formatPaise(paise: number | string): string {
   });
 }
 
-// ── Public asset URLs ────────────────────────────────────────────────────
-
-/**
- * Base URL for the public assets S3 bucket.
- * Must match `PUBLIC_ASSETS_BUCKET` / `PUBLIC_ASSETS_REGION` in sms-backend.
- */
-const PUBLIC_ASSETS_URL =
-  process.env.NEXT_PUBLIC_PUBLIC_ASSETS_URL ||
-  'https://appme-public-assets.s3.ap-south-1.amazonaws.com';
-
-/**
- * Returns the canonical logo URL for a school, or `null` if no logo has
- * been uploaded yet. Adds a `?v=<timestamp>` cache-buster derived from
- * `school.logoUpdatedAt`.
- */
-export function getPublicLogoUrl(
-  slug: string,
-  logoUpdatedAt: string | null | undefined,
-): string | null {
-  if (!logoUpdatedAt) return null;
-  const v = new Date(logoUpdatedAt).getTime();
-  return `${PUBLIC_ASSETS_URL}/schools/${slug}/logo.png?v=${v}`;
-}
+// Logo URLs used to be assembled here from NEXT_PUBLIC_PUBLIC_ASSETS_URL,
+// which duplicated the bucket name and drifted from sms-backend's. The admin
+// API now returns `school.logoUrl` directly — render that instead.

@@ -1,12 +1,683 @@
 @import 'tailwindcss';
 
+/* ═══════════════════════════════════════════════════════════════════════
+   COLEGIO HUB — "Slate & Chalk"
+
+   The control plane for a school platform, built from the two materials a
+   school is actually made of: slate and chalk. The ground is a green-cast
+   slate, never a neutral black. The accents are a chalk box — five pigments
+   that are never decorative: each one carries a fixed meaning, so status is
+   the palette rather than something painted on top of it.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ── Ground: slate, green-cast ─────────────────────────────────────── */
+  --color-ink-950: #070c0a; /* deepest — page behind panels */
+  --color-ink-900: #0b1210; /* page */
+  --color-ink-850: #0e1614; /* sunken (table headers, wells) */
+  --color-ink-800: #111a17; /* surface — cards, panels */
+  --color-ink-700: #182420; /* raised — hover, inputs */
+  --color-ink-600: #1f2e29; /* active / pressed */
+
+  --color-line: #24332d; /* hairline */
+  --color-line-strong: #33453d; /* emphasised divider, input border */
+
+  /* ── Chalk: text ───────────────────────────────────────────────────── */
+  --color-chalk: #e7ede9; /* primary text */
+  --color-chalk-soft: #b7c4be; /* secondary text */
+  --color-chalk-dim: #8a9c94; /* muted / labels */
+  --color-chalk-faint: #7a8a83; /* meta, placeholder — 4.9:1 on ink-800, AA */
+
+  /* ── The chalk box: five pigments, each with a fixed job ───────────── */
+  /* mint — ACTIVE, success, primary action */
+  --color-mint: #7fd8a6;
+  --color-mint-bright: #9ae3ba;
+  --color-mint-deep: #4aa87a;
+  --color-mint-tint: #12251c;
+  --color-mint-edge: #1e4033;
+
+  /* amber — PENDING, warning, "needs attention" */
+  --color-amber: #f0c86b;
+  --color-amber-bright: #f7d98d;
+  --color-amber-tint: #241e12;
+  --color-amber-edge: #493a1d;
+
+  /* rose — SUSPENDED, destructive, failure */
+  --color-rose: #f09a9a;
+  --color-rose-bright: #f6b3b3;
+  --color-rose-tint: #271717;
+  --color-rose-edge: #4a2929;
+
+  /* sky — informational, plan tiers, neutral data */
+  --color-sky: #8cc5e8;
+  --color-sky-bright: #a9d5f0;
+  --color-sky-tint: #12212c;
+  --color-sky-edge: #23445b;
+
+  /* iris — the AI platform section */
+  --color-iris: #b39ce8;
+  --color-iris-bright: #c6b3ef;
+  --color-iris-tint: #1c1830;
+  --color-iris-edge: #362e52;
+
+  /* ── Type ──────────────────────────────────────────────────────────── */
+  --font-display: var(--font-space-grotesk), 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Page widths ───────────────────────────────────────────────────
+     Two measures, named. Wide is for tables and dashboards; reading is
+     for forms and prose, held near 65 characters so labels and help text
+     stay scannable. */
+  --container-wide: 1240px;
+  --container-reading: 880px;
+
+  /* ── Radii: measured, not bubbly ───────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* ── Motion ────────────────────────────────────────────────────────── */
+  --ease-out-chalk: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Base
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Everything below lives in an explicit cascade layer. Tailwind declares
+   `theme, base, components, utilities` — keeping these in `base` and
+   `components` is what lets a one-off utility (`pl-9`, `w-56`, `text-rose`)
+   still win over a component class. Unlayered CSS would silently outrank
+   every utility in the app. */
+@layer base {
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  /* Slate is a material, not a flat fill: a barely-there tooth keeps large
+     dark fields from reading as dead pixels. 3% — visible only in aggregate. */
+  --slate-tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+
+  /* Only the installed app draws under the status bar. In a browser tab the
+     chrome already clears the notch, so adding the inset there would just
+     push the top bar down by a phone-sized gap for no reason. */
+  --pwa-top-inset: 0px;
+}
+
+@media (display-mode: standalone) {
+  :root {
+    --pwa-top-inset: env(safe-area-inset-top);
+  }
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-ink-900);
+  background-image: var(--slate-tooth);
+  color: var(--color-chalk);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--color-mint);
+  color: var(--color-ink-950);
+}
+
+/* One focus treatment everywhere, always visible. */
+:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Form controls get the chalk treatment from the base layer, so a control
+   that was never given the `.input` class still reads correctly on slate.
+   Utilities and `.input` both sit in later layers and still win.
+   Padding is deliberately NOT set here: borderless inline inputs (an
+   editable plan name sitting on a card) must stay flush with the text
+   around them, and every boxed input already carries its own px/py. */
+input:not([type='checkbox']):not([type='radio']):not([type='file']),
+select,
+textarea {
+  background-color: var(--color-ink-850);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-chalk);
+  transition:
+    border-color 160ms var(--ease-out-chalk),
+    background-color 160ms var(--ease-out-chalk);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-chalk-faint);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-mint-deep);
+  background-color: var(--color-ink-800);
+  box-shadow: 0 0 0 3px rgb(127 216 166 / 0.12);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Checkboxes and radios pick up the primary pigment rather than the OS blue. */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-mint);
+  cursor: pointer;
+}
+
+/* Native date/month/time pickers render their indicator dark-on-dark
+   otherwise. */
+::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+option {
+  background-color: var(--color-ink-800);
+  color: var(--color-chalk);
+}
+
+/* Scrollbars belong to the slate, not to the OS. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border: 3px solid var(--color-ink-900);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #435a50;
+}
+
+} /* @layer base */
+
+@layer components {
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Type scale — display is set tight and slightly negative-tracked so
+   headings read as engraved labels rather than web headlines.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.t-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.t-section {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+/* The eyebrow is the console's structural device: it names the kind of
+   thing you're looking at, in the machine's voice. */
+.t-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-chalk-dim);
+}
+
+/* Machine strings — slugs, ids, keys, secrets — are set in mono because
+   that is what they are. Never used for prose. */
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+
+.t-num {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Components
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Panel: the one container. Elevation on a dark ground is a lighter
+      surface plus a 1px top light-catch, not a drop shadow. ─────────── */
+.panel {
+  background-color: var(--color-ink-800);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.03);
+}
+
+.panel-sunken {
+  background-color: var(--color-ink-850);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out-chalk),
+    border-color 160ms var(--ease-out-chalk),
+    color 160ms var(--ease-out-chalk),
+    opacity 160ms var(--ease-out-chalk);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Primary is chalk-mint on slate: the one filled thing on a screen. */
+.btn-primary {
+  background-color: var(--color-mint);
+  color: #05100b;
+  font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-mint-bright);
+}
+
+.btn-secondary {
+  background-color: var(--color-ink-700);
+  border-color: var(--color-line-strong);
+  color: var(--color-chalk);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-ink-600);
+  border-color: #40564d;
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--color-chalk-dim);
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-ink-700);
+  color: var(--color-chalk);
+}
+
+.btn-danger {
+  background-color: var(--color-rose-tint);
+  border-color: var(--color-rose-edge);
+  color: var(--color-rose);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #331d1d;
+  border-color: #5c3434;
+  color: var(--color-rose-bright);
+}
+
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.btn-lg {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* ── Fields ────────────────────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-chalk-dim);
+  margin-bottom: 7px;
+}
+
+.input {
+  width: 100%;
+  background-color: var(--color-ink-850);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--color-chalk);
+  transition:
+    border-color 160ms var(--ease-out-chalk),
+    background-color 160ms var(--ease-out-chalk);
+}
+
+.input::placeholder {
+  color: var(--color-chalk-faint);
+}
+
+.input:hover:not(:disabled):not(:focus) {
+  border-color: #3d5249;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-mint-deep);
+  background-color: var(--color-ink-800);
+  box-shadow: 0 0 0 3px rgb(127 216 166 / 0.12);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+textarea.input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+select.input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238A9C94' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  padding-right: 30px;
+}
+
+/* ── Pills: status is the palette. ─────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pill-mint {
+  background-color: var(--color-mint-tint);
+  border-color: var(--color-mint-edge);
+  color: var(--color-mint);
+}
+.pill-amber {
+  background-color: var(--color-amber-tint);
+  border-color: var(--color-amber-edge);
+  color: var(--color-amber);
+}
+.pill-rose {
+  background-color: var(--color-rose-tint);
+  border-color: var(--color-rose-edge);
+  color: var(--color-rose);
+}
+.pill-sky {
+  background-color: var(--color-sky-tint);
+  border-color: var(--color-sky-edge);
+  color: var(--color-sky);
+}
+.pill-iris {
+  background-color: var(--color-iris-tint);
+  border-color: var(--color-iris-edge);
+  color: var(--color-iris);
+}
+.pill-slate {
+  background-color: var(--color-ink-700);
+  border-color: var(--color-line-strong);
+  color: var(--color-chalk-dim);
+}
+
+/* ── Tables: dense, hairline-ruled, no zebra. ──────────────────────── */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--color-ink-850);
+  border-bottom: 1px solid var(--color-line);
+  padding: 9px 16px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-chalk-dim);
+  white-space: nowrap;
+}
+
+.tbl tbody td {
+  padding: 11px 16px;
+  border-bottom: 1px solid rgb(36 51 45 / 0.6);
+  vertical-align: middle;
+}
+
+.tbl tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tbl tbody tr.row-link {
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out-chalk);
+}
+
+.tbl tbody tr.row-link:hover {
+  background-color: var(--color-ink-700);
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────────── */
+.tab {
+  position: relative;
+  padding: 10px 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-chalk-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 160ms var(--ease-out-chalk);
+}
+.tab:hover {
+  color: var(--color-chalk-soft);
+}
+.tab[data-active='true'] {
+  color: var(--color-chalk);
+}
+.tab[data-active='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background-color: var(--color-mint);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ── Toggle ────────────────────────────────────────────────────────── */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background-color: var(--color-ink-600);
+  border: 1px solid var(--color-line-strong);
+  cursor: pointer;
+  transition:
+    background-color 180ms var(--ease-out-chalk),
+    border-color 180ms var(--ease-out-chalk);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background-color: var(--color-chalk-dim);
+  transition:
+    transform 180ms var(--ease-out-chalk),
+    background-color 180ms var(--ease-out-chalk);
+}
+.switch[data-on='true'] {
+  background-color: var(--color-mint-tint);
+  border-color: var(--color-mint-deep);
+}
+.switch[data-on='true']::after {
+  transform: translateX(16px);
+  background-color: var(--color-mint);
+}
+
+.rise {
+  animation: chalk-rise 520ms var(--ease-out-chalk) both;
+}
+
+.beam-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 0%,
+    var(--color-mint) 6%,
+    var(--color-sky) 12%,
+    transparent 20%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation-name: beam-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+} /* @layer components */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Motion — page-load orchestration. Everything reveals from the same
+   sequence so a screen assembles rather than pops.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@keyframes chalk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* BorderBeam: a light travelling the edge. The conic gradient is masked to a
+   1px ring so the panel's own surface stays untouched. */
+@property --beam-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes beam-spin {
+  to {
+    --beam-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beam-ring {
+    display: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

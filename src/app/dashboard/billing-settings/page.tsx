@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
+import { PageHeader } from '@/components/ConsoleShell';
 import {
   adminBilling,
   billingConfig,
@@ -119,13 +120,13 @@ function RunBillingPanel() {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-ink-800 rounded-lg border border-line p-5 space-y-4">
       <div className="flex items-center gap-2">
-        <PlayCircle className="w-4 h-4 text-violet-600" />
-        <h2 className="text-sm font-bold text-slate-900">Run billing now</h2>
+        <PlayCircle className="w-4 h-4 text-mint" />
+        <h2 className="text-sm font-bold text-chalk">Run billing now</h2>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-chalk-dim">
         Billing runs on its own schedule every night. Use this when you need it
         sooner. Running twice for the same month is safe — an invoice that
         already exists is reported as skipped, never issued again.
@@ -133,7 +134,7 @@ function RunBillingPanel() {
 
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
             Job
           </label>
           <select
@@ -142,7 +143,7 @@ function RunBillingPanel() {
               setJob(e.target.value);
               setResult(null);
             }}
-            className="block mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="block mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
           >
             {(jobs.length
               ? jobs.map((j) => j.name)
@@ -157,7 +158,7 @@ function RunBillingPanel() {
 
         {needsMonth && (
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
               Month to bill
             </label>
             <input
@@ -165,7 +166,7 @@ function RunBillingPanel() {
               value={month}
               max={currentMonth()}
               onChange={(e) => setMonth(e.target.value)}
-              className="block mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="block mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
             />
           </div>
         )}
@@ -173,46 +174,46 @@ function RunBillingPanel() {
         <button
           onClick={() => run(true)}
           disabled={running}
-          className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="px-4 py-2 rounded-lg text-sm font-semibold border border-line text-chalk-soft hover:bg-ink-700 disabled:opacity-50"
         >
           Preview
         </button>
         <button
           onClick={() => run(false)}
           disabled={running}
-          className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:bg-slate-300"
+          className="px-4 py-2 rounded-lg text-sm font-semibold bg-mint text-ink-950 hover:bg-mint-bright disabled:bg-ink-600"
         >
           {running ? 'Running…' : 'Run'}
         </button>
       </div>
 
-      <p className="text-[11px] text-slate-400">
+      <p className="text-[11px] text-chalk-faint">
         {JOB_LABELS[job]?.description}
       </p>
 
       {result && (
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600 flex gap-4">
+        <div className="border border-line rounded-md overflow-hidden">
+          <div className="px-4 py-2 bg-ink-850 text-xs font-semibold text-chalk-soft flex gap-4">
             <span>{resultLabel}</span>
-            <span className="text-emerald-600">{result.generated} created</span>
-            <span className="text-slate-500">
+            <span className="text-mint">{result.generated} created</span>
+            <span className="text-chalk-dim">
               {result.skippedExisting} skipped
             </span>
             {result.failed > 0 && (
-              <span className="text-red-600">{result.failed} failed</span>
+              <span className="text-rose">{result.failed} failed</span>
             )}
           </div>
           {result.details.length > 0 && (
-            <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+            <div className="max-h-64 overflow-y-auto divide-y divide-line">
               {result.details.map((detail, index) => (
                 <div
                   key={index}
                   className="px-4 py-2 text-xs flex items-center justify-between gap-3"
                 >
-                  <span className="text-slate-700 truncate">
+                  <span className="text-chalk-soft truncate">
                     {detail.schoolName ?? `School #${detail.schoolId}`}
                     {detail.invoiceNumber && (
-                      <span className="text-slate-400">
+                      <span className="text-chalk-faint">
                         {' '}
                         · {detail.invoiceNumber}
                       </span>
@@ -221,10 +222,10 @@ function RunBillingPanel() {
                   <span
                     className={
                       detail.outcome === 'failed'
-                        ? 'text-red-600 shrink-0'
+                        ? 'text-rose shrink-0'
                         : detail.outcome === 'skipped'
-                          ? 'text-slate-400 shrink-0'
-                          : 'text-emerald-600 shrink-0'
+                          ? 'text-chalk-faint shrink-0'
+                          : 'text-mint shrink-0'
                     }
                   >
                     {detail.totalPaise != null
@@ -288,24 +289,24 @@ function VolumeSlabsPanel() {
   };
 
   if (!slabs) {
-    return <div className="h-32 bg-slate-100 rounded-2xl animate-pulse" />;
+    return <div className="h-32 bg-ink-700 rounded-lg animate-pulse" />;
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-ink-800 rounded-lg border border-line p-5 space-y-4">
       <div className="flex items-center gap-2">
-        <Layers className="w-4 h-4 text-violet-600" />
-        <h2 className="text-sm font-bold text-slate-900">Volume discounts</h2>
+        <Layers className="w-4 h-4 text-mint" />
+        <h2 className="text-sm font-bold text-chalk">Volume discounts</h2>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-chalk-dim">
         Applied to every plan, based on the school&apos;s student count. Bands
         must not overlap, and only the last one may be left open-ended.
       </p>
 
       <div className="space-y-2">
         {slabs.length === 0 && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-chalk-faint">
             No bands — every school pays the list rate.
           </p>
         )}
@@ -318,10 +319,10 @@ function VolumeSlabsPanel() {
               onChange={(e) =>
                 update(index, { minStudents: Number(e.target.value || 0) })
               }
-              className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+              className="w-24 px-2 py-1.5 border border-line rounded-lg text-xs"
               aria-label="From students"
             />
-            <span className="text-slate-400 text-xs">to</span>
+            <span className="text-chalk-faint text-xs">to</span>
             <input
               type="number"
               min={0}
@@ -333,10 +334,10 @@ function VolumeSlabsPanel() {
                     e.target.value === '' ? null : Number(e.target.value),
                 })
               }
-              className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+              className="w-24 px-2 py-1.5 border border-line rounded-lg text-xs"
               aria-label="To students"
             />
-            <span className="text-slate-400 text-xs">students →</span>
+            <span className="text-chalk-faint text-xs">students →</span>
             <div className="relative w-24">
               <input
                 type="number"
@@ -349,10 +350,10 @@ function VolumeSlabsPanel() {
                     discountPercent: Number(e.target.value || 0),
                   })
                 }
-                className="w-full px-2 py-1.5 pr-6 border border-slate-200 rounded-lg text-xs"
+                className="w-full px-2 py-1.5 pr-6 border border-line rounded-lg text-xs"
                 aria-label="Discount percent"
               />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-chalk-faint text-xs">
                 %
               </span>
             </div>
@@ -360,7 +361,7 @@ function VolumeSlabsPanel() {
               onClick={() =>
                 setSlabs(slabs.filter((_, i) => i !== index))
               }
-              className="text-slate-300 hover:text-red-500 transition-colors"
+              className="text-chalk-faint hover:text-rose transition-colors"
               aria-label="Remove band"
             >
               <Trash2 className="w-4 h-4" />
@@ -383,14 +384,14 @@ function VolumeSlabsPanel() {
               },
             ])
           }
-          className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+          className="text-xs font-semibold text-mint hover:text-mint-bright"
         >
           + Add band
         </button>
         <button
           onClick={save}
           disabled={saving}
-          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:bg-slate-300"
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-mint text-ink-950 hover:bg-mint-bright disabled:bg-ink-600"
         >
           {saving ? 'Saving…' : 'Save slabs'}
         </button>
@@ -414,7 +415,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
         {label}
       </label>
       <input
@@ -422,7 +423,7 @@ function Field({
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
       />
     </div>
   );
@@ -471,27 +472,25 @@ export default function BillingSettingsPage() {
     setConfig((c) => (c ? { ...c, ...patch } : c));
 
   if (!config) {
-    return <div className="h-64 bg-slate-100 rounded-2xl animate-pulse" />;
+    return <div className="h-64 bg-ink-700 rounded-lg animate-pulse" />;
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Billing Settings</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Your company details as they appear on every invoice, plus tax and
-          dunning defaults
-        </p>
-      </div>
+    <div className="mx-auto max-w-wide space-y-4 px-5 py-6 lg:px-10 lg:py-10">
+      <PageHeader
+        eyebrow="Billing"
+        title="Settings"
+        description="Your company details as they appear on every invoice, plus tax and dunning defaults."
+      />
 
       <RunBillingPanel />
 
       <VolumeSlabsPanel />
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="bg-ink-800 rounded-lg border border-line p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-violet-600" />
-          <h2 className="text-sm font-bold text-slate-900">Company profile</h2>
+          <Building2 className="w-4 h-4 text-mint" />
+          <h2 className="text-sm font-bold text-chalk">Company profile</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -549,18 +548,18 @@ export default function BillingSettingsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="bg-ink-800 rounded-lg border border-line p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-violet-600" />
-          <h2 className="text-sm font-bold text-slate-900">Tax &amp; invoices</h2>
+          <Receipt className="w-4 h-4 text-mint" />
+          <h2 className="text-sm font-bold text-chalk">Tax &amp; invoices</h2>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-chalk-soft">
           <input
             type="checkbox"
             checked={config.gstEnabled}
             onChange={(e) => set({ gstEnabled: e.target.checked })}
-            className="accent-violet-600"
+            className="accent-mint"
           />
           Charge GST on invoices
         </label>
@@ -584,13 +583,13 @@ export default function BillingSettingsPage() {
           />
         </div>
 
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[11px] text-chalk-faint">
           Changing these affects invoices issued from now on. Invoices already
           issued keep the details they were printed with.
         </p>
 
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
             Invoice footer note
           </label>
           <textarea
@@ -598,15 +597,15 @@ export default function BillingSettingsPage() {
             onChange={(e) => set({ invoiceFooterNote: e.target.value })}
             rows={2}
             placeholder="Payment terms, bank details, or a thank-you line"
-            className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
           />
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <div className="bg-ink-800 rounded-lg border border-line p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-violet-600" />
-          <h2 className="text-sm font-bold text-slate-900">
+          <ShieldAlert className="w-4 h-4 text-mint" />
+          <h2 className="text-sm font-bold text-chalk">
             Payment terms &amp; trials
           </h2>
         </div>
@@ -638,7 +637,7 @@ export default function BillingSettingsPage() {
           />
         </div>
 
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[11px] text-chalk-faint">
           A school is suspended once an invoice is unpaid for its due date plus
           the grace days. Individual schools can be given more time from their
           own page.
@@ -649,7 +648,7 @@ export default function BillingSettingsPage() {
         <button
           onClick={save}
           disabled={!dirty || saving}
-          className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white disabled:bg-slate-200 disabled:text-slate-400 hover:bg-violet-700 transition-colors"
+          className="px-5 py-2 rounded-lg text-sm font-semibold bg-mint text-ink-950 disabled:bg-ink-600 disabled:text-chalk-faint hover:bg-mint-bright transition-colors"
         >
           {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
         </button>

@@ -34,7 +34,6 @@ jobs:
         env:
           NEXT_PUBLIC_HUB_API_URL: ${{ vars.NEXT_PUBLIC_HUB_API_URL }}
           NEXT_PUBLIC_SMS_API_URL: ${{ vars.NEXT_PUBLIC_SMS_API_URL }}
-          NEXT_PUBLIC_PUBLIC_ASSETS_URL: ${{ vars.NEXT_PUBLIC_PUBLIC_ASSETS_URL }}
           NEXT_PUBLIC_APP_NAME: ${{ vars.NEXT_PUBLIC_APP_NAME }}
         run: npm run build
 
