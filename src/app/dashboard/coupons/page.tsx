@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Search, Ticket, X } from 'lucide-react';
 import {
@@ -509,8 +509,8 @@ export default function CouponsPage() {
                   const state = couponState(coupon);
                   const isOpen = expanded === coupon.id;
                   return (
-                    <>
-                      <tr key={coupon.id}>
+                    <Fragment key={coupon.id}>
+                      <tr>
                         <td className="px-4 py-3">
                           <span className="font-mono font-semibold text-slate-800">
                             {coupon.code}
@@ -608,7 +608,7 @@ export default function CouponsPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
