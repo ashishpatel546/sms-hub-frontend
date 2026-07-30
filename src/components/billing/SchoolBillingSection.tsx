@@ -16,12 +16,15 @@ import {
   type InvoiceStatus,
   type NegotiatedDiscountType,
   type SchoolBillingOverview,
+  type SubscriptionAddon,
 } from '@/lib/sms-api';
+import NumberInput from '@/components/ui/NumberInput';
 import { downloadInvoicePdf } from '@/lib/billing-invoice-pdf';
 import {
   RecordPaymentDialog,
   RefundDialog,
 } from './InvoiceMoneyDialogs';
+import AddonDialog from './AddonDialog';
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
   PAID: 'bg-mint-tint text-mint',
@@ -73,9 +76,12 @@ interface SubscriptionForm {
  */
 export default function SchoolBillingSection({
   slug,
+  refreshToken,
   onSchoolChanged,
 }: {
   slug: string;
+  /** Changing this re-reads the panel — see the parent's `handleBillingChanged`. */
+  refreshToken?: number;
   onSchoolChanged?: () => void;
 }) {
   const [overview, setOverview] = useState<SchoolBillingOverview | null>(null);
@@ -94,21 +100,36 @@ export default function SchoolBillingSection({
   );
   const [refundingInvoice, setRefundingInvoice] =
     useState<BillingInvoice | null>(null);
+  const [addons, setAddons] = useState<SubscriptionAddon[]>([]);
+  /** The add-on endpoint could not be reached — say so instead of showing "none". */
+  const [addonsUnavailable, setAddonsUnavailable] = useState(false);
+  const [addingAddon, setAddingAddon] = useState(false);
+  const [editingAddon, setEditingAddon] = useState<SubscriptionAddon | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewData, planList, invoiceList, creditData] =
+      const [overviewData, planList, invoiceList, creditData, addonList] =
         await Promise.all([
           adminBilling.getSubscription(slug),
           schoolPlans.list(),
           adminBilling.listInvoices(slug),
           adminBilling.getCredit(slug),
+          // Isolated deliberately: everything else on this panel is older than
+          // add-ons, and an environment where this endpoint is missing or its
+          // table unmigrated must still be able to read a subscription and
+          // settle an invoice. Inside the Promise.all, one 404 here took the
+          // whole section down to a loading skeleton.
+          adminBilling.listAddons(slug).catch(() => null),
         ]);
       setOverview(overviewData);
       setPlans(planList);
       setInvoices(invoiceList);
       setCredit(creditData);
+      setAddons(addonList ?? []);
+      setAddonsUnavailable(addonList === null);
 
       const subscription = overviewData.subscription;
       setForm({
@@ -136,7 +157,10 @@ export default function SchoolBillingSection({
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+    // `refreshToken` is a signal, not data: it is never read in here, it exists
+    // purely so a change made in a sibling panel re-runs this fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, refreshToken]);
 
   useEffect(() => {
     void load();
@@ -233,6 +257,31 @@ export default function SchoolBillingSection({
     }
   };
 
+  /**
+   * Stops an add-on from being charged again. It is retired rather than
+   * deleted, because it is what the extra line on an already-issued invoice was
+   * priced from.
+   */
+  const retireAddon = async (addon: SubscriptionAddon) => {
+    if (
+      !confirm(
+        `Stop charging "${addon.label}"? It comes off the next invoice. Invoices already issued keep the charge.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await adminBilling.removeAddon(slug, addon.id);
+      toast.success('Charge stopped');
+      await load();
+      // The feature panel shows this charge beside its linked feature, so it
+      // has to hear about the retirement too.
+      onSchoolChanged?.();
+    } catch (e: any) {
+      toast.error(e?.info?.message ?? 'Could not stop the charge');
+    }
+  };
+
   const voidInvoice = async (invoice: BillingInvoice) => {
     const reason = prompt(
       `Why is ${invoice.invoiceNumber} being voided? It stays on record, and a corrected invoice can then be issued for the same period.`,
@@ -247,7 +296,10 @@ export default function SchoolBillingSection({
     }
   };
 
-  if (loading || !form) {
+  // Keyed on the data, not on `loading`, so a background refresh never tears
+  // the form down mid-edit — rebuilding it from the server silently discarded
+  // anything typed but not yet saved.
+  if (!form) {
     return (
       <section className="bg-ink-800 rounded-lg shadow p-6">
         <div className="h-40 bg-ink-700 rounded animate-pulse" />
@@ -258,6 +310,12 @@ export default function SchoolBillingSection({
   const selectedPlan = plans.find((p) => p.id === Number(form.planId));
   const subscription = overview?.subscription;
   const students = overview?.billableStudents ?? 0;
+
+  // Invoices arrive newest first, so the oldest still owing is the last match —
+  // and the oldest is what any payment should be applied against first.
+  const oldestOpenInvoice =
+    invoices.filter((i) => i.status !== 'VOID' && i.balancePaise > 0).at(-1) ??
+    null;
 
   return (
     <>
@@ -282,6 +340,13 @@ export default function SchoolBillingSection({
               {subscription?.baselineStudentCount ?? '—'}
             </p>
           </div>
+          {/*
+            Recording an offline receipt also lives on each invoice row, but an
+            operator looking at an outstanding figure is already thinking about
+            one specific thing — collecting it. Offering it here means they do
+            not have to know to scroll to the invoice table to find out it is
+            possible at all.
+          */}
           <div>
             <p className="text-xs text-chalk-faint">Outstanding</p>
             <p
@@ -293,6 +358,14 @@ export default function SchoolBillingSection({
             >
               {formatPaise(overview?.outstandingPaise ?? 0)}
             </p>
+            {oldestOpenInvoice && (
+              <button
+                onClick={() => setPayingInvoice(oldestOpenInvoice)}
+                className="mt-0.5 text-[11px] font-medium text-mint hover:text-mint-bright"
+              >
+                Record a payment
+              </button>
+            )}
           </div>
           <div>
             <p className="text-xs text-chalk-faint">Renews</p>
@@ -445,17 +518,14 @@ export default function SchoolBillingSection({
                 <option value="PERCENT">Percent</option>
                 <option value="FLAT">Flat ₹</option>
               </select>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 step="0.01"
                 disabled={form.negotiatedDiscountType === 'NONE'}
                 value={form.negotiatedDiscountValue}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    negotiatedDiscountValue: Number(e.target.value || 0),
-                  })
+                emptyValue={0}
+                onChange={(value) =>
+                  setForm({ ...form, negotiatedDiscountValue: value ?? 0 })
                 }
                 className="flex-1 border rounded-md px-3 py-2 text-sm disabled:bg-ink-850"
               />
@@ -573,16 +643,13 @@ export default function SchoolBillingSection({
                 <label className="field-label">
                   Trial discount %
                 </label>
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={100}
                   value={form.trialDiscountPercent}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      trialDiscountPercent: Number(e.target.value || 0),
-                    })
+                  emptyValue={0}
+                  onChange={(percent) =>
+                    setForm({ ...form, trialDiscountPercent: percent ?? 0 })
                   }
                   className="w-full border rounded-md px-3 py-2 text-sm"
                 />
@@ -638,6 +705,114 @@ export default function SchoolBillingSection({
                 : 'Assign Subscription'}
           </button>
         </div>
+      </section>
+
+      {/*
+        Every other lever on this page only ever reduces a bill. Add-ons are the
+        one that raises it, so they sit in their own panel between the terms that
+        priced the plan and the invoices that carry the result.
+      */}
+      <section className="bg-ink-800 rounded-lg shadow p-6">
+        <div className="flex items-center justify-between border-b pb-2 mb-1">
+          <h2 className="text-lg font-semibold text-chalk">Add-on charges</h2>
+          <button
+            onClick={() => setAddingAddon(true)}
+            disabled={addonsUnavailable}
+            className="text-xs font-medium text-mint hover:text-mint-bright disabled:opacity-40"
+          >
+            Add a charge
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-chalk-faint">
+          Extras charged on top of the plan, at face value — after every
+          discount, before tax. Each one prints as its own invoice line with the
+          commitment behind it.
+        </p>
+
+        {addonsUnavailable ? (
+          <p className="rounded-md border border-amber-100 bg-amber-tint px-3 py-2.5 text-xs text-amber">
+            Could not reach the add-on service. If this API was just deployed,
+            check that the <span className="font-mono">subscription_addon</span>{' '}
+            migration has been run.
+          </p>
+        ) : addons.length === 0 ? (
+          <p className="text-sm text-chalk-faint">
+            Nothing extra is charged. Add one when something outside the plan is
+            promised during a negotiation.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line rounded-md border border-line">
+            {addons.map((addon) => (
+              <li
+                key={addon.id}
+                className={`flex items-start justify-between gap-4 px-3.5 py-3 ${
+                  addon.isActive ? '' : 'opacity-55'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-chalk-soft">
+                    {addon.label}
+                    {!addon.isActive && (
+                      <span className="ml-2 rounded-full bg-ink-700 px-2 py-0.5 text-[10px] font-semibold text-chalk-dim">
+                        RETIRED
+                      </span>
+                    )}
+                  </p>
+                  {addon.description && (
+                    <p className="mt-0.5 text-[11px] text-chalk-faint">
+                      {addon.description}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[11px] text-chalk-dim">
+                    {formatPaise(addon.amountPaise)}
+                    {addon.chargeType === 'PER_STUDENT_PER_MONTH'
+                      ? ' / student / month'
+                      : ' / billing period'}
+                    {addon.featureKey && (
+                      <>
+                        {' · for '}
+                        <span className="font-mono">{addon.featureKey}</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="shrink-0 whitespace-nowrap">
+                  <button
+                    onClick={() => setEditingAddon(addon)}
+                    className="mr-3 text-xs text-chalk-dim hover:text-chalk"
+                  >
+                    Edit
+                  </button>
+                  {addon.isActive && (
+                    <button
+                      onClick={() => void retireAddon(addon)}
+                      className="text-xs text-chalk-faint hover:text-rose"
+                    >
+                      Stop charging
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {addons.some((addon) => addon.isActive) && (
+          <p className="mt-3 text-[11px] text-chalk-faint">
+            Total added to each period invoice:{' '}
+            <span className="font-medium text-chalk-dim">
+              {formatPaise(
+                addons
+                  .filter((a) => a.isActive && a.chargeType === 'FLAT')
+                  .reduce((sum, a) => sum + a.amountPaise, 0),
+              )}
+            </span>
+            {addons.some(
+              (a) => a.isActive && a.chargeType === 'PER_STUDENT_PER_MONTH',
+            ) && ' plus the per-student charges, which scale with the roll'}
+            .
+          </p>
+        )}
       </section>
 
       <section className="bg-ink-800 rounded-lg shadow p-6">
@@ -787,6 +962,22 @@ export default function SchoolBillingSection({
           onClose={() => setRefundingInvoice(null)}
           slug={slug}
           invoice={refundingInvoice}
+          onDone={() => {
+            void load();
+            onSchoolChanged?.();
+          }}
+        />
+      )}
+
+      {(addingAddon || editingAddon) && (
+        <AddonDialog
+          open
+          slug={slug}
+          addon={editingAddon ?? undefined}
+          onClose={() => {
+            setAddingAddon(false);
+            setEditingAddon(null);
+          }}
           onDone={() => {
             void load();
             onSchoolChanged?.();

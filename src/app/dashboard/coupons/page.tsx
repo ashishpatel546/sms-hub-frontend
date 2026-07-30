@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Search, Ticket, X } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import NumberInput from '@/components/ui/NumberInput';
 import {
   coupons,
   formatPaise,
@@ -96,7 +97,7 @@ function CreateCouponModal({
         minInvoicePaise: form.minInvoiceRupees
           ? Math.round(Number(form.minInvoiceRupees) * 100)
           : undefined,
-        maxRedemptions: form.maxRedemptions,
+        maxRedemptions: Math.max(1, form.maxRedemptions),
         validUntil: form.validUntil || undefined,
         notes: form.notes || undefined,
       });
@@ -174,14 +175,14 @@ function CreateCouponModal({
             <label className="field-label">
               {form.discountType === 'PERCENT' ? 'Percent off' : 'Rupees off'}
             </label>
-            <input
-              type="number"
+            <NumberInput
               min={0}
               max={form.discountType === 'PERCENT' ? 100 : undefined}
               step="0.01"
               value={form.discountValue}
-              onChange={(e) =>
-                setForm({ ...form, discountValue: Number(e.target.value || 0) })
+              emptyValue={0}
+              onChange={(value) =>
+                setForm({ ...form, discountValue: value ?? 0 })
               }
               className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"
             />
@@ -230,15 +231,14 @@ function CreateCouponModal({
             <label className="field-label">
               Times usable
             </label>
-            <input
-              type="number"
+            {/* Clamped at submit, not per keystroke: clamping as you type meant
+                clearing the box snapped it back to 1, so "12" came out "112". */}
+            <NumberInput
               min={1}
               value={form.maxRedemptions}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  maxRedemptions: Math.max(1, Number(e.target.value || 1)),
-                })
+              emptyValue={1}
+              onChange={(count) =>
+                setForm({ ...form, maxRedemptions: count ?? 1 })
               }
               className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"
             />

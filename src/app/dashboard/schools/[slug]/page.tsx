@@ -13,29 +13,11 @@ import {
   adminSchools,
   type School,
   type SchoolOwner,
-  type SchoolPlan,
   type SchoolProfile,
 } from '@/lib/sms-api';
 import toast from 'react-hot-toast';
 import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
-
-const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
-
-const KNOWN_FEATURE_FLAGS = [
-  'hr_portal',
-  'library_management',
-  'ai_tools',
-  'online_fee_payment',
-  'visitor_management',
-];
-
-const FEATURE_LABELS: Record<string, string> = {
-  hr_portal: 'HR Portal',
-  library_management: 'Library Management',
-  ai_tools: 'AI Tools',
-  online_fee_payment: 'Online Fee Payment',
-  visitor_management: 'Visitor Management',
-};
+import FeatureOverridesSection from '@/components/billing/FeatureOverridesSection';
 
 const KNOWN_SECRETS = [
   { key: 'razorpay_key_id', label: 'Razorpay Key ID' },
@@ -57,6 +39,7 @@ export default function SchoolDetailPage() {
   const [settingsKey, setSettingsKey] = useState('');
   const [settingsValue, setSettingsValue] = useState('');
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
+  const [billingVersion, setBillingVersion] = useState(0);
 
   // ── Profile state ──────────────────────────────────────────────────
   const [profile, setProfile] = useState<SchoolProfile>({});
@@ -97,9 +80,17 @@ export default function SchoolDetailPage() {
     setProfile((prev) => ({ ...prev, [key]: value }));
   }
 
-  const refresh = useCallback(async () => {
+  /**
+   * Reloads the school.
+   *
+   * `quiet` re-fetches without dropping the page back to its loading state.
+   * The loud version tears down every section below it, which throws away
+   * whatever an operator was part-way through typing — a background refresh
+   * triggered by some other panel must never cost someone their unsaved edits.
+   */
+  const refresh = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!slug) return;
-    setLoading(true);
+    if (!opts?.quiet) setLoading(true);
     try {
       const [s, secrets, ownerInfo] = await Promise.all([
         adminSchools.get(slug),
@@ -143,6 +134,20 @@ export default function SchoolDetailPage() {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  /**
+   * Bumped whenever add-ons or the subscription change.
+   *
+   * The billing panel and the feature-override panel each read the add-on list
+   * for their own purposes, so neither can see an edit made in the other. This
+   * counter is the one place that says "billing data moved"; both re-read on it,
+   * which is why retiring a charge no longer leaves a stale price beside a
+   * feature toggle until the page is reloaded by hand.
+   */
+  const handleBillingChanged = useCallback(() => {
+    void refresh({ quiet: true });
+    setBillingVersion((version) => version + 1);
   }, [refresh]);
 
   async function handleUpdateOverview() {
@@ -271,31 +276,6 @@ export default function SchoolDetailPage() {
     }
   }
 
-  async function handlePlanChange(next: SchoolPlan) {
-    if (!school) return;
-    try {
-      const updated = await adminSchools.updatePlan(school.slug, next);
-      setSchool(updated);
-      toast.success(`Plan changed to ${next}`);
-    } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string } };
-      toast.error(apiErr?.info?.message || 'Plan change failed');
-    }
-  }
-
-  async function handleFeatureToggle(flag: string, enabled: boolean) {
-    if (!school) return;
-    try {
-      const updated = await adminSchools.updateFeatures(school.slug, {
-        [flag]: enabled,
-      });
-      setSchool(updated);
-    } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string } };
-      toast.error(apiErr?.info?.message || 'Toggle failed');
-    }
-  }
-
   async function handleSettingsAdd() {
     if (!school || !settingsKey.trim()) return;
     let parsed: unknown = settingsValue;
@@ -407,10 +387,6 @@ export default function SchoolDetailPage() {
       </ProtectedRoute>
     );
   }
-
-  const allFeatureKeys = Array.from(
-    new Set([...KNOWN_FEATURE_FLAGS, ...Object.keys(school.features ?? {})]),
-  );
 
   return (
     <ProtectedRoute requireRole="SYSTEM_ADMIN">
@@ -878,53 +854,16 @@ export default function SchoolDetailPage() {
 
           <SchoolBillingSection
             slug={slug}
-            onSchoolChanged={() => void refresh()}
+            refreshToken={billingVersion}
+            onSchoolChanged={handleBillingChanged}
           />
 
-          <section className="panel p-6">
-            <h2 className="t-section text-chalk border-b border-line pb-3 mb-1">
-              Feature overrides
-            </h2>
-            <p className="text-xs text-chalk-faint mb-4">
-              The subscribed plan decides what this school gets by default.
-              Switching a feature here overrides the plan for this school only —
-              useful when something extra was promised during a negotiation.
-            </p>
-            <div className="space-y-2">
-              {allFeatureKeys.map((flag) => {
-                const enabled = !!school.features?.[flag];
-                return (
-                  <div
-                    key={flag}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-sm text-chalk-soft">
-                      {FEATURE_LABELS[flag] ?? (
-                        <span className="font-mono">{flag}</span>
-                      )}
-                    </span>
-                    <label className="inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) =>
-                          void handleFeatureToggle(flag, e.target.checked)
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="w-10 h-5 bg-ink-600 rounded-full peer peer-checked:bg-mint relative transition-colors">
-                        <div
-                          className={`absolute top-0.5 ${
-                            enabled ? 'left-5' : 'left-0.5'
-                          } w-4 h-4 bg-ink-800 rounded-full transition-all`}
-                        />
-                      </div>
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <FeatureOverridesSection
+            slug={slug}
+            refreshToken={billingVersion}
+            onFeaturesChanged={() => void refresh({ quiet: true })}
+            onAddonsChanged={handleBillingChanged}
+          />
 
           <section className="panel p-6">
             <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">

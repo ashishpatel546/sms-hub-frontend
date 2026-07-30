@@ -5,6 +5,7 @@ import { aiAdmin, aiAdminPatch, type AiPlan, type LlmTierEntry, type LlmModelPri
 import toast from 'react-hot-toast';
 import { Trash2, Plus, X, Cpu, RefreshCw, Settings2, IndianRupee, UserCheck } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import NumberInput from '@/components/ui/NumberInput';
 
 const FEATURES = [
   { key: 'chat', label: 'Student Chat' },
@@ -1042,19 +1043,25 @@ function PlanCard({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="field-label">Credits / month</label>
-          <input
-            type="number"
+          <NumberInput
+            min={0}
             value={form.monthly_credits}
-            onChange={(e) => setForm((f) => ({ ...f, monthly_credits: +e.target.value }))}
+            emptyValue={0}
+            onChange={(credits) =>
+              setForm((f) => ({ ...f, monthly_credits: credits ?? 0 }))
+            }
             className="w-full border border-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-mint/25"
           />
         </div>
         <div>
           <label className="field-label">Price (₹)</label>
-          <input
-            type="number"
+          <NumberInput
+            min={0}
             value={form.price_inr}
-            onChange={(e) => setForm((f) => ({ ...f, price_inr: +e.target.value }))}
+            emptyValue={0}
+            onChange={(price) =>
+              setForm((f) => ({ ...f, price_inr: price ?? 0 }))
+            }
             className="w-full border border-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-mint/25"
           />
         </div>
@@ -1332,19 +1339,28 @@ export default function AiPlansPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Credits / month</label>
-                  <input
-                    type="number"
+                  <NumberInput
+                    min={0}
                     value={createForm.monthly_credits}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, monthly_credits: +e.target.value }))}
+                    emptyValue={0}
+                    onChange={(credits) =>
+                      setCreateForm((f) => ({
+                        ...f,
+                        monthly_credits: credits ?? 0,
+                      }))
+                    }
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-mint/25"
                   />
                 </div>
                 <div>
                   <label className="field-label">Price (₹)</label>
-                  <input
-                    type="number"
+                  <NumberInput
+                    min={0}
                     value={createForm.price_inr}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, price_inr: +e.target.value }))}
+                    emptyValue={0}
+                    onChange={(price) =>
+                      setCreateForm((f) => ({ ...f, price_inr: price ?? 0 }))
+                    }
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-mint/25"
                   />
                 </div>

@@ -6,7 +6,11 @@ import Modal from '@/components/ui/Modal';
 import {
   adminBilling,
   formatPaise,
+  OFFLINE_MODE_REFERENCE_HINTS,
+  OFFLINE_PAYMENT_MODE_LABELS,
+  OFFLINE_PAYMENT_MODES,
   type BillingInvoice,
+  type OfflinePaymentMode,
 } from '@/lib/sms-api';
 
 /** Rupees in, paise out. Returns null when the field is not a usable amount. */
@@ -77,6 +81,7 @@ export function RecordPaymentDialog({
 }) {
   const outstanding = invoice.balancePaise;
   const [amount, setAmount] = useState(rupeesOf(outstanding));
+  const [mode, setMode] = useState<OfflinePaymentMode>('UPI');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
   const [waive, setWaive] = useState(false);
@@ -94,6 +99,7 @@ export function RecordPaymentDialog({
     try {
       await adminBilling.recordOfflinePayment(slug, invoice.id, {
         reference: reference.trim(),
+        mode,
         note: note.trim() || undefined,
         amountPaise: paise,
         waiveRemainder: shortfall > 0 ? waive : undefined,
@@ -148,12 +154,34 @@ export function RecordPaymentDialog({
           hint="Defaults to the full balance. Change it if a different amount arrived."
         />
 
+        {/*
+          The channel is a field of its own rather than something to mention in
+          the reference: reconciling a bank statement means asking for "every UPI
+          receipt this month", which free text cannot answer.
+        */}
         <div>
-          <label className="field-label">Reference</label>
+          <label className="field-label">Paid by</label>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as OfflinePaymentMode)}
+            className="mt-1 w-full rounded-md border border-line bg-ink-800 px-3 py-2 text-sm"
+          >
+            {OFFLINE_PAYMENT_MODES.map((option) => (
+              <option key={option} value={option}>
+                {OFFLINE_PAYMENT_MODE_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="field-label">
+            {OFFLINE_MODE_REFERENCE_HINTS[mode]}
+          </label>
           <input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="Cheque no., UTR, receipt no."
+            placeholder={OFFLINE_MODE_REFERENCE_HINTS[mode]}
             className="mt-1 w-full rounded-md border border-line bg-ink-800 px-3 py-2 text-sm"
           />
         </div>
