@@ -1,4 +1,4 @@
-import { getToken, logout } from './auth';
+import { authFetch } from './auth';
 import type { InvoiceDetail } from './billing-invoice-pdf';
 
 export type { InvoiceDetail };
@@ -19,21 +19,13 @@ async function smsRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${SMS_API_BASE_URL}${path}`;
-  const headers: Record<string, string> = {
-    ...(options.body && !(options.body instanceof FormData)
-      ? { 'Content-Type': 'application/json' }
-      : {}),
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (typeof window !== 'undefined') {
-    const token = getToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-  }
 
   let res: Response;
   try {
-    res = await fetch(url, { ...options, headers });
+    // The token is minted by sms-hub-backend, so refreshing it is a hub-API
+    // call even though this request targets sms-backend — authFetch handles
+    // that split.
+    res = await authFetch(url, options);
   } catch (e: unknown) {
     // Re-throw AbortError so callers can distinguish it from real failures.
     if ((e as { name?: string })?.name === 'AbortError') throw e;
@@ -47,7 +39,7 @@ async function smsRequest<T>(
   }
 
   if (res.status === 401) {
-    logout();
+    // authFetch already tried a refresh and started the logout redirect.
     throw new Error('Unauthorized');
   }
   if (!res.ok) {
@@ -164,13 +156,30 @@ export const adminSchools = {
       signal,
     ),
   get: (slug: string) => smsApi.get<School>(`/admin/schools/${slug}`),
+  /**
+   * The catalog, the plan baseline and this school's overrides in one call.
+   *
+   * `School.features` alone holds *only* the overrides, so a feature the plan
+   * already grants reads as disabled there — this is what the override console
+   * has to render against.
+   */
+  getFeatures: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SchoolFeatureBreakdown>(
+      `/admin/schools/${slug}/features`,
+      signal,
+    ),
   create: (body: CreateSchoolPayload) =>
     smsApi.post<CreateSchoolResponse>('/admin/schools', body),
   update: (slug: string, body: { name?: string }) =>
     smsApi.patch<School>(`/admin/schools/${slug}`, body),
   updatePlan: (slug: string, plan: SchoolPlan) =>
     smsApi.patch<School>(`/admin/schools/${slug}/plan`, { plan }),
-  updateFeatures: (slug: string, features: Record<string, boolean>) =>
+  /**
+   * Merges overrides into the school. `true`/`false` force a flag on or off
+   * whatever the plan says; `null` **removes** the override so the flag goes
+   * back to inheriting the plan.
+   */
+  updateFeatures: (slug: string, features: Record<string, boolean | null>) =>
     smsApi.patch<School>(`/admin/schools/${slug}/features`, { features }),
   updateSettings: (slug: string, settings: Record<string, unknown>) =>
     smsApi.patch<School>(`/admin/schools/${slug}/settings`, { settings }),
@@ -254,6 +263,21 @@ export interface FeatureCatalogEntry {
   defaultEnabled: boolean;
 }
 
+/** How one school's feature map is arrived at — plan baseline plus overrides. */
+export interface SchoolFeatureBreakdown {
+  planId: number | null;
+  planName: string | null;
+  /** True when the baseline is the catalog default (school has no plan). */
+  baselineIsCatalogDefault: boolean;
+  /** What the plan grants before any per-school override. */
+  baseline: Record<string, boolean>;
+  /** Only the flags an operator has explicitly forced on or off. */
+  overrides: Record<string, boolean>;
+  /** `{ ...baseline, ...overrides }` — what the API actually enforces. */
+  effective: Record<string, boolean>;
+  catalog: FeatureCatalogEntry[];
+}
+
 export interface BillingPlan {
   id: number;
   name: string;
@@ -304,8 +328,12 @@ export interface BillingInvoice {
   issuedAt: string;
   paidAt: string | null;
   paymentMethod: 'RAZORPAY' | 'OFFLINE' | null;
+  /** Channel an offline settlement arrived through. */
+  offlineMode: OfflinePaymentMode | null;
   offlineReference: string | null;
   voidReason: string | null;
+  /** Negotiated extras charged on top of the discounted subscription. */
+  addonPaise: string;
   discountBreakdown: {
     slabPercent: number;
     slabPaise: number;
@@ -404,6 +432,86 @@ export interface AssignSubscriptionPayload {
   initialPaymentReference?: string;
 }
 
+export type AddonChargeType = 'FLAT' | 'PER_STUDENT_PER_MONTH';
+
+export const ADDON_CHARGE_TYPES: AddonChargeType[] = [
+  'FLAT',
+  'PER_STUDENT_PER_MONTH',
+];
+
+export const ADDON_CHARGE_TYPE_LABELS: Record<AddonChargeType, string> = {
+  FLAT: 'Flat, per billing period',
+  PER_STUDENT_PER_MONTH: 'Per student, per month',
+};
+
+/** A charge levied on top of the plan — the priced half of a feature override. */
+export interface SubscriptionAddon {
+  id: number;
+  schoolId: number;
+  label: string;
+  /** What was committed, printed on every invoice carrying the charge. */
+  description: string | null;
+  chargeType: AddonChargeType;
+  /** Paise per period (FLAT), or paise per student per month. */
+  amountPaise: number;
+  /** Catalog feature this charge pays for, when it maps to one. */
+  featureKey: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddonPayload {
+  label: string;
+  description?: string | null;
+  chargeType: AddonChargeType;
+  amountPaise: number;
+  featureKey?: string | null;
+  isActive?: boolean;
+}
+
+/** Channel a manually-recorded payment arrived through. */
+export type OfflinePaymentMode =
+  | 'CASH'
+  | 'UPI'
+  | 'NETBANKING'
+  | 'CHEQUE'
+  | 'DEMAND_DRAFT'
+  | 'CARD'
+  | 'OTHER';
+
+export const OFFLINE_PAYMENT_MODES: OfflinePaymentMode[] = [
+  'UPI',
+  'NETBANKING',
+  'CASH',
+  'CHEQUE',
+  'DEMAND_DRAFT',
+  'CARD',
+  'OTHER',
+];
+
+export const OFFLINE_PAYMENT_MODE_LABELS: Record<OfflinePaymentMode, string> = {
+  CASH: 'Cash',
+  UPI: 'UPI',
+  NETBANKING: 'Bank transfer (NEFT / RTGS / IMPS)',
+  CHEQUE: 'Cheque',
+  DEMAND_DRAFT: 'Demand draft',
+  CARD: 'Card',
+  OTHER: 'Other',
+};
+
+/** What the reference field is asking for, per channel. */
+export const OFFLINE_MODE_REFERENCE_HINTS: Record<OfflinePaymentMode, string> = {
+  CASH: 'Receipt no.',
+  UPI: 'UPI transaction ID',
+  NETBANKING: 'UTR / transaction ref',
+  CHEQUE: 'Cheque no.',
+  DEMAND_DRAFT: 'DD no.',
+  CARD: 'Auth code / last 4 digits',
+  OTHER: 'Reference',
+};
+
 export interface JobRunResult {
   generated: number;
   skippedExisting: number;
@@ -464,11 +572,21 @@ export const adminBilling = {
       `/admin/schools/${slug}/invoices/${invoiceId}`,
       signal,
     ),
+  listAddons: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SubscriptionAddon[]>(`/admin/schools/${slug}/addons`, signal),
+  createAddon: (slug: string, body: AddonPayload) =>
+    smsApi.post<SubscriptionAddon>(`/admin/schools/${slug}/addons`, body),
+  updateAddon: (slug: string, id: number, body: Partial<AddonPayload>) =>
+    smsApi.patch<SubscriptionAddon>(`/admin/schools/${slug}/addons/${id}`, body),
+  /** Retires the add-on. Never deletes — issued invoices cite it. */
+  removeAddon: (slug: string, id: number) =>
+    smsApi.delete<SubscriptionAddon>(`/admin/schools/${slug}/addons/${id}`),
   recordOfflinePayment: (
     slug: string,
     invoiceId: number,
     body: {
       reference: string;
+      mode?: OfflinePaymentMode;
       note?: string;
       /** Omit to settle the whole outstanding balance. */
       amountPaise?: number;

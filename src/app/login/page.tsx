@@ -5,7 +5,13 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { ArrowRight, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { getToken, getUser, setToken } from '@/lib/auth';
+import {
+  getRefreshToken,
+  getToken,
+  getUser,
+  isAccessTokenExpired,
+  setTokens,
+} from '@/lib/auth';
 import toast from 'react-hot-toast';
 import ChalkToaster from '@/components/ui/ChalkToaster';
 import GridPattern from '@/components/ui/GridPattern';
@@ -42,7 +48,10 @@ export default function LoginPage() {
     const token = getToken();
     if (token) {
       const user = getUser();
-      if (user && !user.isChangePasswordOnly) {
+      // An expired access token is fine as long as a refresh token can still
+      // revive it — ProtectedRoute does that before the dashboard renders.
+      const revivable = !isAccessTokenExpired() || !!getRefreshToken();
+      if (user && !user.isChangePasswordOnly && revivable) {
         router.replace('/dashboard');
         return;
       }
@@ -56,10 +65,13 @@ export default function LoginPage() {
     try {
       const data = await api.post<{
         access_token: string;
+        refresh_token?: string;
         requirePasswordChange?: boolean;
       }>('/auth/login', { email, password });
 
-      setToken(data.access_token);
+      // No refresh_token on the requirePasswordChange path — that stub token
+      // is deliberately short-lived and single-purpose.
+      setTokens(data.access_token, data.refresh_token);
       if (data.requirePasswordChange) {
         toast.success('Welcome — please set a new password to continue');
         setStep('change-password');
@@ -87,11 +99,14 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await api.post('/auth/change-password', { password: newPassword });
-      const data = await api.post<{ access_token: string }>('/auth/login', {
+      const data = await api.post<{
+        access_token: string;
+        refresh_token?: string;
+      }>('/auth/login', {
         email,
         password: newPassword,
       });
-      setToken(data.access_token);
+      setTokens(data.access_token, data.refresh_token);
       toast.success('Password updated');
       router.push('/dashboard');
     } catch (err: unknown) {

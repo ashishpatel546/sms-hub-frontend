@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import NumberInput from '@/components/ui/NumberInput';
 import {
   adminBilling,
   billingConfig,
@@ -312,43 +313,33 @@ function VolumeSlabsPanel() {
         )}
         {slabs.map((slab, index) => (
           <div key={index} className="flex items-center gap-2">
-            <input
-              type="number"
+            <NumberInput
               min={0}
               value={slab.minStudents}
-              onChange={(e) =>
-                update(index, { minStudents: Number(e.target.value || 0) })
-              }
+              emptyValue={0}
+              onChange={(count) => update(index, { minStudents: count ?? 0 })}
               className="w-24 px-2 py-1.5 border border-line rounded-lg text-xs"
               aria-label="From students"
             />
             <span className="text-chalk-faint text-xs">to</span>
-            <input
-              type="number"
+            <NumberInput
               min={0}
-              value={slab.maxStudents ?? ''}
+              value={slab.maxStudents}
               placeholder="and above"
-              onChange={(e) =>
-                update(index, {
-                  maxStudents:
-                    e.target.value === '' ? null : Number(e.target.value),
-                })
-              }
+              onChange={(count) => update(index, { maxStudents: count })}
               className="w-24 px-2 py-1.5 border border-line rounded-lg text-xs"
               aria-label="To students"
             />
             <span className="text-chalk-faint text-xs">students →</span>
             <div className="relative w-24">
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 max={100}
                 step="0.01"
                 value={slab.discountPercent}
-                onChange={(e) =>
-                  update(index, {
-                    discountPercent: Number(e.target.value || 0),
-                  })
+                emptyValue={0}
+                onChange={(percent) =>
+                  update(index, { discountPercent: percent ?? 0 })
                 }
                 className="w-full px-2 py-1.5 pr-6 border border-line rounded-lg text-xs"
                 aria-label="Discount percent"
@@ -423,6 +414,42 @@ function Field({
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
+      />
+    </div>
+  );
+}
+
+/**
+ * The whole-number sibling of {@link Field}.
+ *
+ * `Field` keeps its value as text, which is right for a name or a GSTIN but
+ * wrong for a count: coercing on every keystroke turns a cleared box into `0`,
+ * and the next digit typed lands after it. This keeps the numbers numeric and
+ * still lets the box be empty while it is being retyped.
+ */
+function NumberField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
+        {label}
+      </label>
+      <NumberInput
+        min={0}
+        value={value}
+        emptyValue={0}
+        onChange={(next) => onChange(next ?? 0)}
+        placeholder={placeholder}
         className="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
       />
     </div>
@@ -611,23 +638,20 @@ export default function BillingSettingsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Field
+          <NumberField
             label="Days to pay"
-            type="number"
             value={config.defaultPaymentTermDays}
-            onChange={(v) => set({ defaultPaymentTermDays: Number(v) })}
+            onChange={(v) => set({ defaultPaymentTermDays: v })}
           />
-          <Field
+          <NumberField
             label="Grace days"
-            type="number"
             value={config.defaultGraceDays}
-            onChange={(v) => set({ defaultGraceDays: Number(v) })}
+            onChange={(v) => set({ defaultGraceDays: v })}
           />
-          <Field
+          <NumberField
             label="Trial length (days)"
-            type="number"
             value={config.defaultTrialDays}
-            onChange={(v) => set({ defaultTrialDays: Number(v) })}
+            onChange={(v) => set({ defaultTrialDays: v })}
           />
           <Field
             label="Trial discount %"

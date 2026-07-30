@@ -4,6 +4,7 @@ import './globals.css';
 import DynamicTitle from '@/components/DynamicTitle';
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar';
+import SessionRefreshResetter from '@/components/SessionRefreshResetter';
 
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Colegios-Hub';
 
@@ -76,6 +77,7 @@ export default function RootLayout({
         {children}
         <PWAInstallBanner />
         <ServiceWorkerRegistrar />
+        <SessionRefreshResetter />
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, X, Trash2, Layers, Percent, IndianRupee } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import NumberInput, { RupeeInput } from '@/components/ui/NumberInput';
 import {
   schoolPlans,
   BILLING_FREQUENCIES,
@@ -13,35 +14,6 @@ import {
   type BillingPlan,
   type FeatureCatalogEntry,
 } from '@/lib/sms-api';
-
-/** Rupee input backed by a paise value, so the API only ever sees integers. */
-function RupeeInput({
-  valuePaise,
-  onChange,
-  className = '',
-}: {
-  valuePaise: number;
-  onChange: (paise: number) => void;
-  className?: string;
-}) {
-  return (
-    <div className={`relative ${className}`}>
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-chalk-faint text-sm">
-        ₹
-      </span>
-      <input
-        type="number"
-        min={0}
-        step="0.01"
-        value={valuePaise / 100}
-        onChange={(e) =>
-          onChange(Math.round(Number(e.target.value || 0) * 100))
-        }
-        className="w-full pl-7 pr-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-mint"
-      />
-    </div>
-  );
-}
 
 function FeatureChecklist({
   catalog,
@@ -179,13 +151,16 @@ function PlanCard({
         <label className="text-[11px] font-semibold uppercase tracking-wide text-chalk-faint">
           Price / student / month
         </label>
-        <RupeeInput
-          valuePaise={form.pricePerStudentPaise}
-          onChange={(paise) =>
-            setForm({ ...form, pricePerStudentPaise: paise })
-          }
-          className="mt-1"
-        />
+        <div className="mt-1">
+          <RupeeInput
+            valuePaise={form.pricePerStudentPaise}
+            emptyValue={0}
+            onChange={(paise) =>
+              setForm({ ...form, pricePerStudentPaise: paise ?? 0 })
+            }
+            min={0}
+          />
+        </div>
       </div>
 
       <div>
@@ -195,18 +170,18 @@ function PlanCard({
         <div className="grid grid-cols-2 gap-2 mt-1">
           {BILLING_FREQUENCIES.map((frequency) => (
             <div key={frequency} className="relative">
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 max={100}
                 step="0.01"
                 value={form.frequencyDiscounts?.[frequency] ?? 0}
-                onChange={(e) =>
+                emptyValue={0}
+                onChange={(percent) =>
                   setForm({
                     ...form,
                     frequencyDiscounts: {
                       ...form.frequencyDiscounts,
-                      [frequency]: Number(e.target.value || 0),
+                      [frequency]: percent ?? 0,
                     },
                   })
                 }
@@ -445,13 +420,16 @@ export default function SchoolPlansPage() {
               <label className="field-label">
                 Price per student per month
               </label>
-              <RupeeInput
-                valuePaise={newPlan.pricePerStudentPaise}
-                onChange={(paise) =>
-                  setNewPlan({ ...newPlan, pricePerStudentPaise: paise })
-                }
-                className="mt-1"
-              />
+              <div className="mt-1">
+                <RupeeInput
+                  valuePaise={newPlan.pricePerStudentPaise}
+                  emptyValue={0}
+                  onChange={(paise) =>
+                    setNewPlan({ ...newPlan, pricePerStudentPaise: paise ?? 0 })
+                  }
+                  min={0}
+                />
+              </div>
               <p className="text-[11px] text-chalk-faint mt-1">
                 A 500-student school on this plan pays{' '}
                 {formatPaise(newPlan.pricePerStudentPaise * 500)} a month before

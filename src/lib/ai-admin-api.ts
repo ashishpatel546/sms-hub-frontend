@@ -195,21 +195,14 @@ export const aiAdmin = {
 // PATCH/PUT helper (api.ts only has post/get/delete — add other methods explicitly)
 export async function aiAdminRequest<T>(method: string, path: string, body: unknown): Promise<T> {
   const { API_BASE_URL } = await import('./api');
-  const { getToken, logout } = await import('./auth');
+  const { authFetch } = await import('./auth');
 
-  const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await authFetch(`${API_BASE_URL}${path}`, {
     method,
-    headers,
     body: JSON.stringify(body),
   });
   if (res.status === 401) {
-    logout();
+    // authFetch already tried a refresh and started the logout redirect.
     throw new Error('Unauthorized');
   }
   if (!res.ok) {

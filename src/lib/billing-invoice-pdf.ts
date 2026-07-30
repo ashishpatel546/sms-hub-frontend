@@ -27,8 +27,14 @@ export interface InvoiceDetail {
     quantity: number;
     unitPaise: number;
     amountPaise: number;
+    /** Absent on invoices issued before add-ons existed — treat as subscription. */
+    kind?: 'SUBSCRIPTION' | 'ADDON';
+    /** The commitment behind an add-on, as agreed with the school. */
+    note?: string | null;
   }>;
   subtotalPaise: number;
+  /** Negotiated extras, charged at face value on top of the discounts. */
+  addonPaise?: number;
   discountBreakdown: {
     slabPercent: number;
     slabPaise: number;
@@ -48,6 +54,8 @@ export interface InvoiceDetail {
   issuedAt: string;
   paidAt: string | null;
   paymentMethod: string | null;
+  /** Channel an offline settlement arrived through, e.g. UPI or CHEQUE. */
+  offlineMode?: string | null;
   offlineReference: string | null;
   /** How the invoice was actually settled, when it has been. */
   settlement: {
@@ -641,7 +649,12 @@ export async function downloadInvoicePdf(
     doc,
     settled
       ? `Received ${formatDate(invoice.paidAt)}${
-          invoice.paymentMethod ? ` via ${invoice.paymentMethod}` : ''
+          // The channel is more useful than "OFFLINE" when we know it.
+          invoice.offlineMode
+            ? ` via ${invoice.offlineMode.replace(/_/g, ' ').toLowerCase()}`
+            : invoice.paymentMethod
+              ? ` via ${invoice.paymentMethod}`
+              : ''
         }`
       : ledger.settledPaise > 0
         ? `${inr(ledger.settledPaise)} of ${inr(invoice.totalPaise)} settled`
@@ -668,8 +681,13 @@ export async function downloadInvoicePdf(
   autoTable(doc, {
     startY: y,
     head: [['DESCRIPTION', 'QTY', 'RATE (INR)', 'AMOUNT (INR)']],
+    // An add-on carries the commitment it was agreed on. Printing it under the
+    // line is the whole reason the note is captured — the school should be able
+    // to read what an extra charge bought without asking.
     body: invoice.lineItems.map((item) => [
-      item.description,
+      item.kind === 'ADDON' && item.note
+        ? `${item.description}\n${item.note}`
+        : item.description,
       String(item.quantity),
       amount(item.unitPaise),
       amount(item.amountPaise),
@@ -738,6 +756,12 @@ export async function downloadInvoicePdf(
       `Trial discount (${discount.trialPercent}%)`,
       `- ${amount(discount.trialPaise)}`,
     ]);
+  }
+  // Add-ons are added, not discounted, so they sit below every concession and
+  // above the tax — the order in which they were actually applied.
+  for (const item of invoice.lineItems) {
+    if (item.kind !== 'ADDON') continue;
+    rows.push([item.description, amount(item.amountPaise)]);
   }
   if (invoice.gstEnabled) {
     rows.push([`GST (${invoice.gstPercent}%)`, amount(invoice.gstPaise)]);
