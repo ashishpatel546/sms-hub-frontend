@@ -1,11 +1,13 @@
-import { getToken, logout } from './auth';
+import { authFetch, HUB_API_BASE_URL } from './auth';
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_HUB_API_URL || 'http://localhost:3002';
+export const API_BASE_URL = HUB_API_BASE_URL;
+
+/** Endpoints that must never carry a token or trigger the refresh/logout path. */
+const UNAUTHENTICATED_PATHS = ['/auth/login', '/auth/refresh-token'];
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
-  const isLoginRequest = path === '/auth/login';
+  const isLoginRequest = UNAUTHENTICATED_PATHS.includes(path);
 
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData)
@@ -14,14 +16,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string>),
   };
 
-  if (typeof window !== 'undefined') {
-    const token = getToken();
-    if (token && !isLoginRequest) headers['Authorization'] = `Bearer ${token}`;
-  }
-
   let res: Response;
   try {
-    res = await fetch(url, { ...options, headers });
+    // authFetch adds the bearer token and silently refreshes it on 401; a
+    // login attempt goes out bare so bad credentials surface as a 401 here
+    // rather than being mistaken for an expired session.
+    res = isLoginRequest
+      ? await fetch(url, { ...options, headers })
+      : await authFetch(url, options);
   } catch {
     const error: any = new Error('Network error');
     error.info = { message: 'Cannot reach server. Check your connection or CORS configuration.' };
@@ -30,7 +32,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 401 && !isLoginRequest) {
-    logout();
+    // authFetch already tried a refresh and started the logout redirect.
     throw new Error('Unauthorized');
   }
 
