@@ -218,6 +218,123 @@ export const adminSchools = {
     ),
 };
 
+// ── User Control Panel ───────────────────────────────────────────────────
+
+export type SchoolUserRole =
+  | 'SUPER_ADMIN'
+  | 'ADMIN'
+  | 'HR_ADMIN'
+  | 'SUB_ADMIN'
+  | 'LIBRARIAN'
+  | 'TEACHER'
+  | 'GUARD'
+  | 'PARENT'
+  | 'STUDENT';
+
+export const SCHOOL_USER_ROLES: SchoolUserRole[] = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'HR_ADMIN',
+  'SUB_ADMIN',
+  'LIBRARIAN',
+  'TEACHER',
+  'GUARD',
+  'PARENT',
+  'STUDENT',
+];
+
+export interface AdminUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  mobile: string | null;
+  role: SchoolUserRole;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  schoolId: number | null;
+  schoolName: string | null;
+  schoolSlug: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserDetail {
+  user: AdminUser;
+  staff: {
+    id: number;
+    employeeCode: number | null;
+    department: string | null;
+    designation: string | null;
+    joiningDate: string | null;
+    exitDate: string | null;
+  } | null;
+  student: {
+    id: number;
+    className: string | null;
+    sectionName: string | null;
+  } | null;
+}
+
+export interface AdminUserSearchParams {
+  schoolId?: number;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  role?: SchoolUserRole;
+  page?: number;
+  limit?: number;
+}
+
+export interface AdminUserListResponse {
+  data: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminResetPasswordResult {
+  message: string;
+  mode: 'default' | 'temporary';
+  /** Present only for mode 'temporary' — shown once, never retrievable again. */
+  temporaryPassword?: string;
+}
+
+export const adminUsers = {
+  list: (params: AdminUserSearchParams, signal?: AbortSignal) => {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== '' && value !== null) {
+        qs.set(key, String(value));
+      }
+    }
+    const q = qs.toString();
+    return smsApi.get<AdminUserListResponse>(
+      `/admin/users${q ? `?${q}` : ''}`,
+      signal,
+    );
+  },
+  get: (id: number, signal?: AbortSignal) =>
+    smsApi.get<AdminUserDetail>(`/admin/users/${id}`, signal),
+  update: (
+    id: number,
+    body: Partial<{
+      firstName: string;
+      lastName: string;
+      email: string;
+      mobile: string;
+    }>,
+  ) => smsApi.patch<AdminUser>(`/admin/users/${id}`, body),
+  updateRole: (id: number, role: SchoolUserRole) =>
+    smsApi.patch<AdminUser>(`/admin/users/${id}/role`, { role }),
+  resetPassword: (id: number, mode: 'default' | 'temporary') =>
+    smsApi.post<AdminResetPasswordResult>(`/admin/users/${id}/reset-password`, {
+      mode,
+    }),
+  toggleStatus: (id: number) =>
+    smsApi.patch<AdminUser>(`/admin/users/${id}/toggle-status`, {}),
+};
+
 // ── Billing: types ───────────────────────────────────────────────────────
 
 export type BillingFrequency =

@@ -10,6 +10,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Schools',
   '/dashboard/schools/new': 'New School',
   '/dashboard/school-plans': 'School Plans',
+  '/dashboard/users': 'Users',
   '/dashboard/coupons': 'Coupons',
   '/dashboard/billing-settings': 'Billing Settings',
   '/dashboard/ai': 'Overview',
@@ -21,6 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
 function resolveTitle(pathname: string): string | undefined {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname.startsWith('/dashboard/schools/')) return 'School Details';
+  if (pathname.startsWith('/dashboard/users/')) return 'User Details';
   return undefined;
 }
 

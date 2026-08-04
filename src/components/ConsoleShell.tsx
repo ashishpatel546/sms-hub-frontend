@@ -42,6 +42,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard', label: 'Schools', icon: Building2, exact: true },
       { href: '/dashboard/schools/new', label: 'Onboard school', icon: Plus },
+      { href: '/dashboard/users', label: 'Users', icon: Users },
     ],
   },
   {
