@@ -3,12 +3,16 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Colegio Hub';
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Colegios-Hub';
 
 const PAGE_TITLES: Record<string, string> = {
   '/login': 'Login',
   '/dashboard': 'Schools',
   '/dashboard/schools/new': 'New School',
+  '/dashboard/school-plans': 'School Plans',
+  '/dashboard/users': 'Users',
+  '/dashboard/coupons': 'Coupons',
+  '/dashboard/billing-settings': 'Billing Settings',
   '/dashboard/ai': 'Overview',
   '/dashboard/ai/users': 'Users',
   '/dashboard/ai/plans': 'Plans',
@@ -18,6 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
 function resolveTitle(pathname: string): string | undefined {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname.startsWith('/dashboard/schools/')) return 'School Details';
+  if (pathname.startsWith('/dashboard/users/')) return 'User Details';
   return undefined;
 }
 

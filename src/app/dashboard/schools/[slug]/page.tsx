@@ -4,34 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Country, State, City } from 'country-state-city';
+import { ArrowLeft } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import ConsoleShell from '@/components/ConsoleShell';
+import ChalkToaster from '@/components/ui/ChalkToaster';
+import { StatusPill, STATUS_INK } from '@/components/ui/Pills';
 import {
   adminSchools,
-  getPublicLogoUrl,
   type School,
   type SchoolOwner,
-  type SchoolPlan,
   type SchoolProfile,
 } from '@/lib/sms-api';
-import toast, { Toaster } from 'react-hot-toast';
-
-const PLANS: SchoolPlan[] = ['FREE', 'STANDARD', 'PREMIUM', 'ENTERPRISE'];
-
-const KNOWN_FEATURE_FLAGS = [
-  'hr_portal',
-  'library_management',
-  'ai_tools',
-  'online_fee_payment',
-  'visitor_management',
-];
-
-const FEATURE_LABELS: Record<string, string> = {
-  hr_portal: 'HR Portal',
-  library_management: 'Library Management',
-  ai_tools: 'AI Tools',
-  online_fee_payment: 'Online Fee Payment',
-  visitor_management: 'Visitor Management',
-};
+import toast from 'react-hot-toast';
+import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
+import FeatureOverridesSection from '@/components/billing/FeatureOverridesSection';
 
 const KNOWN_SECRETS = [
   { key: 'razorpay_key_id', label: 'Razorpay Key ID' },
@@ -53,6 +39,7 @@ export default function SchoolDetailPage() {
   const [settingsKey, setSettingsKey] = useState('');
   const [settingsValue, setSettingsValue] = useState('');
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
+  const [billingVersion, setBillingVersion] = useState(0);
 
   // ── Profile state ──────────────────────────────────────────────────
   const [profile, setProfile] = useState<SchoolProfile>({});
@@ -93,9 +80,17 @@ export default function SchoolDetailPage() {
     setProfile((prev) => ({ ...prev, [key]: value }));
   }
 
-  const refresh = useCallback(async () => {
+  /**
+   * Reloads the school.
+   *
+   * `quiet` re-fetches without dropping the page back to its loading state.
+   * The loud version tears down every section below it, which throws away
+   * whatever an operator was part-way through typing — a background refresh
+   * triggered by some other panel must never cost someone their unsaved edits.
+   */
+  const refresh = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!slug) return;
-    setLoading(true);
+    if (!opts?.quiet) setLoading(true);
     try {
       const [s, secrets, ownerInfo] = await Promise.all([
         adminSchools.get(slug),
@@ -139,6 +134,20 @@ export default function SchoolDetailPage() {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  /**
+   * Bumped whenever add-ons or the subscription change.
+   *
+   * The billing panel and the feature-override panel each read the add-on list
+   * for their own purposes, so neither can see an edit made in the other. This
+   * counter is the one place that says "billing data moved"; both re-read on it,
+   * which is why retiring a charge no longer leaves a stale price beside a
+   * feature toggle until the page is reloaded by hand.
+   */
+  const handleBillingChanged = useCallback(() => {
+    void refresh({ quiet: true });
+    setBillingVersion((version) => version + 1);
   }, [refresh]);
 
   async function handleUpdateOverview() {
@@ -267,31 +276,6 @@ export default function SchoolDetailPage() {
     }
   }
 
-  async function handlePlanChange(next: SchoolPlan) {
-    if (!school) return;
-    try {
-      const updated = await adminSchools.updatePlan(school.slug, next);
-      setSchool(updated);
-      toast.success(`Plan changed to ${next}`);
-    } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string } };
-      toast.error(apiErr?.info?.message || 'Plan change failed');
-    }
-  }
-
-  async function handleFeatureToggle(flag: string, enabled: boolean) {
-    if (!school) return;
-    try {
-      const updated = await adminSchools.updateFeatures(school.slug, {
-        [flag]: enabled,
-      });
-      setSchool(updated);
-    } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string } };
-      toast.error(apiErr?.info?.message || 'Toggle failed');
-    }
-  }
-
   async function handleSettingsAdd() {
     if (!school || !settingsKey.trim()) return;
     let parsed: unknown = settingsValue;
@@ -372,9 +356,11 @@ export default function SchoolDetailPage() {
   if (loading) {
     return (
       <ProtectedRoute requireRole="SYSTEM_ADMIN">
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center text-sm text-gray-500">
-          Loading…
-        </div>
+        <ConsoleShell>
+          <div className="grid min-h-dvh place-items-center text-[13px] text-chalk-dim">
+            Loading school…
+          </div>
+        </ConsoleShell>
       </ProtectedRoute>
     );
   }
@@ -382,89 +368,101 @@ export default function SchoolDetailPage() {
   if (!school) {
     return (
       <ProtectedRoute requireRole="SYSTEM_ADMIN">
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-          <p className="text-gray-600">School not found.</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-blue-600 hover:underline text-sm"
-          >
-            Back to dashboard
-          </button>
-        </div>
+        <ConsoleShell>
+          <div className="grid min-h-dvh place-items-center">
+            <div className="text-center">
+              <p className="t-title text-chalk">School not found</p>
+              <p className="mt-1.5 text-[13px] text-chalk-dim">
+                No tenant is registered under this slug.
+              </p>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="btn btn-secondary mt-5"
+              >
+                Back to schools
+              </button>
+            </div>
+          </div>
+        </ConsoleShell>
       </ProtectedRoute>
     );
   }
 
-  const allFeatureKeys = Array.from(
-    new Set([...KNOWN_FEATURE_FLAGS, ...Object.keys(school.features ?? {})]),
-  );
-
   return (
     <ProtectedRoute requireRole="SYSTEM_ADMIN">
-      <Toaster />
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <header className="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-gray-500 hover:text-gray-800"
-            >
-              &larr; Back
-            </Link>
-            <div className="flex items-center gap-3 border-l pl-4 border-gray-300">
+      <ChalkToaster />
+      <ConsoleShell>
+        <div className="mx-auto max-w-reading px-5 py-6 lg:px-10 lg:py-10">
+          {/* ── Identity ────────────────────────────────────────────────
+              One tenant, named once at the top with its status carried in
+              the rail beside it — the same rail the directory row uses, so
+              the two screens are recognisably about the same object. */}
+          <Link
+            href="/dashboard"
+            className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-chalk-dim transition-colors hover:text-chalk"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Schools
+          </Link>
+
+          <header className="flex flex-wrap items-center justify-between gap-4 pb-6">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <span
+                className="h-11 w-0.75 shrink-0 rounded-full"
+                style={{
+                  backgroundColor:
+                    STATUS_INK[school.status] ?? 'var(--color-chalk-faint)',
+                }}
+                aria-hidden
+              />
               {(() => {
-                const url = getPublicLogoUrl(school.slug, school.logoUpdatedAt);
+                const url = school.logoUrl;
                 return url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={url}
                     alt=""
-                    className="h-9 w-9 rounded-lg object-contain border border-gray-100"
+                    className="h-11 w-11 shrink-0 rounded-md border border-line object-contain"
                   />
                 ) : (
-                  <div className="h-9 w-9 rounded-lg bg-linear-to-br from-blue-100 to-indigo-100 text-blue-700 grid place-items-center font-bold text-sm">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-line bg-ink-700 text-[15px] font-semibold text-chalk-dim">
                     {school.name.charAt(0).toUpperCase()}
                   </div>
                 );
               })()}
-              <div>
-                <h1 className="text-lg font-bold text-gray-800 leading-tight">
+              <div className="min-w-0">
+                <h1 className="t-display truncate text-[26px] text-chalk">
                   {school.name}
                 </h1>
-                <p className="text-xs font-mono text-gray-400 leading-tight">
+                <p className="t-mono mt-1 truncate text-chalk-faint">
                   {school.slug}
                   {school.tagline ? ` · ${school.tagline}` : ''}
                 </p>
               </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            {school.status === 'ACTIVE' ? (
-              <button
-                onClick={handleSuspend}
-                className="text-sm border border-red-300 text-red-700 px-3 py-1.5 rounded-md hover:bg-red-50"
-              >
-                Suspend
-              </button>
-            ) : (
-              <button
-                onClick={handleActivate}
-                className="text-sm border border-green-300 text-green-700 px-3 py-1.5 rounded-md hover:bg-green-50"
-              >
-                Activate
-              </button>
-            )}
-          </div>
-        </header>
 
-        <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-8 space-y-6">
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
+            <div className="flex shrink-0 items-center gap-2.5">
+              <StatusPill status={school.status} />
+              {school.status === 'ACTIVE' ? (
+                <button onClick={handleSuspend} className="btn btn-danger">
+                  Suspend
+                </button>
+              ) : (
+                <button onClick={handleActivate} className="btn btn-primary">
+                  Activate
+                </button>
+              )}
+            </div>
+          </header>
+
+          <main className="space-y-4">
+          <section className="panel p-6">
+            <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Overview
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Name
                 </label>
                 <input
@@ -475,24 +473,24 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Status
                 </label>
                 <p className="text-sm">{school.status}</p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Created
                 </label>
                 <p className="text-sm">
-                  {new Date(school.createdAt).toLocaleString()}
+                  {new Date(school.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
             </div>
             <div className="mt-4 flex justify-end">
               <button
                 onClick={handleUpdateOverview}
-                className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700"
+                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
               >
                 Save
               </button>
@@ -500,18 +498,18 @@ export default function SchoolDetailPage() {
           </section>
 
           {owner && (
-            <section className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-1">
-                School Owner (initial SUPER_ADMIN)
+            <section className="panel p-6">
+              <h2 className="t-section text-chalk border-b border-line pb-3 mb-1">
+                Owner
               </h2>
-              <p className="text-xs text-gray-500 mb-4">
+              <p className="text-xs text-chalk-dim mb-4">
                 Login credentials for the primary admin account. The portal
                 supports login via either email or mobile, so both must
                 remain valid.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                  <label className="field-label">
                     First Name
                   </label>
                   <input
@@ -522,7 +520,7 @@ export default function SchoolDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                  <label className="field-label">
                     Last Name
                   </label>
                   <input
@@ -533,8 +531,8 @@ export default function SchoolDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Email <span className="text-red-500">*</span>
+                  <label className="field-label">
+                    Email <span className="text-rose">*</span>
                   </label>
                   <input
                     type="email"
@@ -545,8 +543,8 @@ export default function SchoolDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Mobile <span className="text-red-500">*</span>
+                  <label className="field-label">
+                    Mobile <span className="text-rose">*</span>
                   </label>
                   <input
                     type="tel"
@@ -562,25 +560,25 @@ export default function SchoolDetailPage() {
                 </div>
               </div>
               {ownerResetPassword && (
-                <div className="mt-4 bg-gray-100 rounded-md p-4 space-y-2">
-                  <p className="text-sm text-gray-600">
+                <div className="mt-4 bg-ink-700 rounded-md p-4 space-y-2">
+                  <p className="text-sm text-chalk-soft">
                     Share this temporary password with{' '}
                     <strong>{owner.email}</strong> over a secure channel. They
                     must change it on first login.
                   </p>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 font-mono text-lg select-all bg-white rounded-md px-3 py-2 border">
+                    <div className="flex-1 font-mono text-lg select-all bg-ink-800 rounded-md px-3 py-2 border">
                       {ownerResetPassword}
                     </div>
                     <button
                       onClick={() => void handleCopyOwnerResetPassword()}
-                      className="bg-gray-700 text-white rounded-md px-3 py-2 text-sm hover:bg-gray-800"
+                      className="bg-ink-700 text-chalk rounded-md px-3 py-2 text-sm hover:bg-ink-600"
                     >
                       Copy
                     </button>
                     <button
                       onClick={() => setOwnerResetPassword(null)}
-                      className="border rounded-md px-3 py-2 text-sm hover:bg-gray-50"
+                      className="border rounded-md px-3 py-2 text-sm hover:bg-ink-700"
                     >
                       Dismiss
                     </button>
@@ -591,14 +589,14 @@ export default function SchoolDetailPage() {
                 <button
                   onClick={() => void handleResetOwnerPassword()}
                   disabled={resettingOwnerPw}
-                  className="border border-red-300 text-red-700 rounded-md px-4 py-2 text-sm hover:bg-red-50 disabled:opacity-50"
+                  className="border border-rose-edge text-rose rounded-md px-4 py-2 text-sm hover:bg-rose-tint disabled:opacity-50"
                 >
                   {resettingOwnerPw ? 'Resetting…' : 'Reset Password'}
                 </button>
                 <button
                   onClick={() => void handleOwnerSave()}
                   disabled={ownerSaving}
-                  className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
                 >
                   {ownerSaving ? 'Saving…' : 'Save Owner'}
                 </button>
@@ -606,14 +604,14 @@ export default function SchoolDetailPage() {
             </section>
           )}
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
+          <section className="panel p-6">
+            <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Logo
             </h2>
             <div className="flex items-center gap-6">
-              <div className="w-28 h-28 rounded-md border bg-gray-50 flex items-center justify-center overflow-hidden">
+              <div className="w-28 h-28 rounded-md border bg-ink-850 flex items-center justify-center overflow-hidden">
                 {(() => {
-                  const url = getPublicLogoUrl(school.slug, school.logoUpdatedAt);
+                  const url = school.logoUrl;
                   return url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -622,7 +620,7 @@ export default function SchoolDetailPage() {
                       className="w-full h-full object-contain"
                     />
                   ) : (
-                    <span className="text-xs text-gray-400">No logo</span>
+                    <span className="text-xs text-chalk-faint">No logo</span>
                   );
                 })()}
               </div>
@@ -635,9 +633,9 @@ export default function SchoolDetailPage() {
                     void handleLogoChange(e.target.files?.[0] ?? null)
                   }
                   disabled={logoUploading}
-                  className="block text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="block text-sm text-chalk-soft file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-ink-700 file:text-chalk hover:file:bg-ink-600"
                 />
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-chalk-faint mt-2">
                   PNG / JPEG / WEBP / SVG, max 5 MB. Stored at{' '}
                   <code className="font-mono">
                     schools/{school.slug}/logo.png
@@ -645,19 +643,19 @@ export default function SchoolDetailPage() {
                   in the public-assets bucket.
                 </p>
                 {logoUploading && (
-                  <p className="text-xs text-blue-600 mt-1">Uploading…</p>
+                  <p className="text-xs text-mint mt-1">Uploading…</p>
                 )}
               </div>
             </div>
           </section>
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-              Profile &amp; Contact
+          <section className="panel p-6">
+            <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
+              Profile and contact
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Tagline
                 </label>
                 <input
@@ -668,7 +666,7 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Website
                 </label>
                 <input
@@ -679,13 +677,13 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Board
                 </label>
                 <select
                   value={profile.board ?? ''}
                   onChange={(e) => setProfileField('board', e.target.value)}
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
                 >
                   <option value="">—</option>
                   <option value="CBSE">CBSE</option>
@@ -697,8 +695,8 @@ export default function SchoolDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Contact Email <span className="text-red-500">*</span>
+                <label className="field-label">
+                  Contact Email <span className="text-rose">*</span>
                 </label>
                 <input
                   type="email"
@@ -711,7 +709,7 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Contact Phone
                 </label>
                 <input
@@ -724,7 +722,7 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Address Line 1
                 </label>
                 <input
@@ -737,7 +735,7 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Address Line 2
                 </label>
                 <input
@@ -750,7 +748,7 @@ export default function SchoolDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Country
                 </label>
                 <select
@@ -767,7 +765,7 @@ export default function SchoolDetailPage() {
                       city: '',
                     }));
                   }}
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
                 >
                   {countries.map((c) => (
                     <option key={c.isoCode} value={c.isoCode}>
@@ -777,7 +775,7 @@ export default function SchoolDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   State / Province
                 </label>
                 <select
@@ -793,7 +791,7 @@ export default function SchoolDetailPage() {
                     }));
                   }}
                   disabled={!states.length}
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-white disabled:bg-gray-100"
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800 disabled:bg-ink-850"
                 >
                   <option value="">—</option>
                   {states.map((s) => (
@@ -804,14 +802,14 @@ export default function SchoolDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   City
                 </label>
                 {cities.length ? (
                   <select
                     value={profile.city ?? ''}
                     onChange={(e) => setProfileField('city', e.target.value)}
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
                   >
                     <option value="">—</option>
                     {cities.map((ct) => (
@@ -830,7 +828,7 @@ export default function SchoolDetailPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
+                <label className="field-label">
                   Postal Code
                 </label>
                 <input
@@ -847,92 +845,41 @@ export default function SchoolDetailPage() {
               <button
                 onClick={handleProfileSave}
                 disabled={profileSaving}
-                className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
               >
                 {profileSaving ? 'Saving…' : 'Save Profile'}
               </button>
             </div>
           </section>
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-              Plan
-            </h2>
-            <div className="flex items-center gap-3">
-              <select
-                value={school.plan}
-                onChange={(e) =>
-                  void handlePlanChange(e.target.value as SchoolPlan)
-                }
-                className="border rounded-md px-3 py-2 text-sm bg-white"
-              >
-                {PLANS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-400">
-                Plan changes take effect immediately.
-              </p>
-            </div>
-          </section>
+          <SchoolBillingSection
+            slug={slug}
+            refreshToken={billingVersion}
+            onSchoolChanged={handleBillingChanged}
+          />
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
-              Feature Flags
-            </h2>
-            <div className="space-y-2">
-              {allFeatureKeys.map((flag) => {
-                const enabled = !!school.features?.[flag];
-                return (
-                  <div
-                    key={flag}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-sm text-gray-700">
-                      {FEATURE_LABELS[flag] ?? (
-                        <span className="font-mono">{flag}</span>
-                      )}
-                    </span>
-                    <label className="inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) =>
-                          void handleFeatureToggle(flag, e.target.checked)
-                        }
-                        className="sr-only peer"
-                      />
-                      <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 relative transition-colors">
-                        <div
-                          className={`absolute top-0.5 ${
-                            enabled ? 'left-5' : 'left-0.5'
-                          } w-4 h-4 bg-white rounded-full transition-all`}
-                        />
-                      </div>
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <FeatureOverridesSection
+            slug={slug}
+            refreshToken={billingVersion}
+            onFeaturesChanged={() => void refresh({ quiet: true })}
+            onAddonsChanged={handleBillingChanged}
+          />
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
+          <section className="panel p-6">
+            <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Settings
             </h2>
             <div className="space-y-2 mb-4">
               {Object.entries(school.settings ?? {}).length === 0 ? (
-                <p className="text-sm text-gray-400">No settings yet.</p>
+                <p className="text-sm text-chalk-faint">No settings yet.</p>
               ) : (
                 Object.entries(school.settings ?? {}).map(([k, v]) => (
                   <div
                     key={k}
-                    className="flex justify-between text-sm font-mono bg-gray-50 px-3 py-2 rounded"
+                    className="flex justify-between text-sm font-mono bg-ink-850 px-3 py-2 rounded"
                   >
-                    <span className="text-gray-700">{k}</span>
-                    <span className="text-gray-500">{JSON.stringify(v)}</span>
+                    <span className="text-chalk-soft">{k}</span>
+                    <span className="text-chalk-dim">{JSON.stringify(v)}</span>
                   </div>
                 ))
               )}
@@ -954,18 +901,18 @@ export default function SchoolDetailPage() {
               />
               <button
                 onClick={handleSettingsAdd}
-                className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700"
+                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
               >
                 Set
               </button>
             </div>
           </section>
 
-          <section className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">
+          <section className="panel p-6">
+            <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Secrets
             </h2>
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-chalk-faint mb-4">
               Values are encrypted at rest with AES-256-GCM. Server never
               returns plaintext — masked values are shown. Submit a new value
               to rotate, or empty to delete.
@@ -976,13 +923,13 @@ export default function SchoolDetailPage() {
                 return (
                   <div key={key} className="flex items-center gap-2">
                     <div className="w-48">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-chalk-soft">
                         {label}
                       </p>
-                      <p className="text-xs font-mono text-gray-400">{key}</p>
+                      <p className="text-xs font-mono text-chalk-faint">{key}</p>
                     </div>
                     <div className="flex-1 flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-20">
+                      <span className="text-xs text-chalk-dim w-20">
                         {masked ?? <em>(not set)</em>}
                       </span>
                       <input
@@ -1000,14 +947,14 @@ export default function SchoolDetailPage() {
                       <button
                         onClick={() => void handleSecretSave(key)}
                         disabled={!secretInputs[key]}
-                        className="bg-blue-600 text-white rounded-md px-3 py-2 text-xs hover:bg-blue-700 disabled:opacity-40"
+                        className="bg-mint text-ink-950 rounded-md px-3 py-2 text-xs hover:bg-mint-bright disabled:opacity-40"
                       >
                         Save
                       </button>
                       {masked && (
                         <button
                           onClick={() => void handleSecretDelete(key)}
-                          className="border border-red-300 text-red-600 rounded-md px-2 py-2 text-xs hover:bg-red-50"
+                          className="border border-rose-edge text-rose rounded-md px-2 py-2 text-xs hover:bg-rose-tint"
                         >
                           Delete
                         </button>
@@ -1018,8 +965,9 @@ export default function SchoolDetailPage() {
               })}
             </div>
           </section>
-        </main>
-      </div>
+          </main>
+        </div>
+      </ConsoleShell>
     </ProtectedRoute>
   );
 }

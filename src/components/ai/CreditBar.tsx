@@ -5,23 +5,41 @@ interface CreditBarProps {
   className?: string;
 }
 
-export default function CreditBar({ used, total, showLabels = false, className = '' }: CreditBarProps) {
+/**
+ * Consumption against an allowance. The pigment is the warning: mint while
+ * there's room, amber past 70%, rose past 90% — the same three meanings the
+ * status pills carry.
+ */
+export default function CreditBar({
+  used,
+  total,
+  showLabels = false,
+  className = '',
+}: CreditBarProps) {
   const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  const color =
-    pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+  const color = pct >= 90 ? 'bg-rose' : pct >= 70 ? 'bg-amber' : 'bg-mint';
 
   return (
     <div className={`w-full ${className}`}>
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+      <div
+        className="h-1 overflow-hidden rounded-full bg-ink-600"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Credits used"
+      >
         <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          className={`h-full rounded-full transition-[width] duration-500 ease-out ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
       {showLabels && (
-        <div className="flex justify-between mt-1 text-xs text-slate-500">
-          <span>{used.toLocaleString()} used</span>
-          <span className="font-medium">{pct}%</span>
+        <div className="mt-1.5 flex justify-between">
+          <span className="t-mono text-chalk-faint">
+            {used.toLocaleString()} used
+          </span>
+          <span className="t-mono text-chalk-dim">{pct}%</span>
         </div>
       )}
     </div>
