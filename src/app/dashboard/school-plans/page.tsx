@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Plus, X, Trash2, Layers, Percent, IndianRupee } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
 import NumberInput, { RupeeInput } from '@/components/ui/NumberInput';
+import PermissionButton from '@/components/ui/PermissionButton';
 import {
   schoolPlans,
   BILLING_FREQUENCIES,
@@ -240,20 +241,25 @@ function PlanCard({
       )}
 
       <div className="flex items-center justify-between pt-2 border-t border-line">
-        <button
+        {/* Plans re-price every school on them, so the whole trio of
+            create/edit/delete is `plan.manage` (ADMIN) on the API — the
+            buttons say so instead of erroring after the click. */}
+        <PermissionButton
+          capability="plan.manage"
           onClick={remove}
-          className="text-chalk-faint hover:text-rose transition-colors"
+          className="text-chalk-faint hover:text-rose transition-colors disabled:opacity-40"
           aria-label="Delete plan"
         >
           <Trash2 className="w-4 h-4" />
-        </button>
-        <button
+        </PermissionButton>
+        <PermissionButton
+          capability="plan.manage"
           onClick={save}
           disabled={!dirty || saving}
           className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-mint text-ink-950 disabled:bg-ink-600 disabled:text-chalk-faint hover:bg-mint-bright transition-colors"
         >
           {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-        </button>
+        </PermissionButton>
       </div>
     </div>
   );
@@ -327,12 +333,13 @@ export default function SchoolPlansPage() {
         title="Plans"
         description="What each plan includes and what it costs, per student per month."
         actions={
-          <button
+          <PermissionButton
+            capability="plan.manage"
             onClick={() => setShowCreate(true)}
             className="btn btn-primary"
           >
             <Plus className="h-4 w-4" strokeWidth={2.25} /> New plan
-          </button>
+          </PermissionButton>
         }
       />
 
@@ -449,13 +456,14 @@ export default function SchoolPlansPage() {
               >
                 Cancel
               </button>
-              <button
+              <PermissionButton
+                capability="plan.manage"
                 onClick={create}
                 disabled={creating}
                 className="px-4 py-2 bg-mint text-ink-950 rounded-lg text-sm font-semibold disabled:bg-ink-600 hover:bg-mint-bright transition-colors"
               >
                 {creating ? 'Creating…' : 'Create Plan'}
-              </button>
+              </PermissionButton>
             </div>
           </div>
         </div>

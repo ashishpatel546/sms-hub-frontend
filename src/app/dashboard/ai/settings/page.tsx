@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { aiAdmin, type AiSetting } from '@/lib/ai-admin-api';
 import { PageHeader } from '@/components/ConsoleShell';
 import { Reveal } from '@/components/ui/Reveal';
+import { useCan, useCapabilities } from '@/lib/capabilities';
 import toast from 'react-hot-toast';
 
 const KNOWN_SETTINGS: Record<
@@ -96,6 +97,11 @@ function SettingRow({
 }
 
 export default function AiSettingsPage() {
+  // These settings are ADMIN-only on the hub API, reads included — below
+  // that the panel is a restriction notice, not a list of dead rows, and the
+  // fetch is never even fired at a 403.
+  const { ready: capsReady } = useCapabilities();
+  const canSettings = useCan('ai.settings');
   const [settings, setSettings] = useState<AiSetting[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -109,8 +115,9 @@ export default function AiSettingsPage() {
   };
 
   useEffect(() => {
+    if (!canSettings) return;
     load();
-  }, []);
+  }, [canSettings]);
 
   const visible = settings.filter((s) => !isManagedElsewhere(s.key));
 
@@ -138,7 +145,15 @@ export default function AiSettingsPage() {
 
       <Reveal delay={0.05}>
         <section className="panel overflow-hidden">
-          {loading ? (
+          {!capsReady ? (
+            <div className="py-14 text-center text-[13px] text-chalk-dim">
+              Loading settings…
+            </div>
+          ) : !canSettings ? (
+            <div className="py-14 text-center text-[13px] text-chalk-dim">
+              AI platform settings need ADMIN access on the hub console.
+            </div>
+          ) : loading ? (
             <div className="py-14 text-center text-[13px] text-chalk-dim">
               Loading settings…
             </div>

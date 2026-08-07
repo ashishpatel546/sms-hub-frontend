@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ConsoleShell from '@/components/ConsoleShell';
 import ChalkToaster from '@/components/ui/ChalkToaster';
+import PermissionButton from '@/components/ui/PermissionButton';
 import { Pill } from '@/components/ui/Pills';
 import {
   adminUsers,
@@ -168,8 +169,12 @@ function UserDetailContent() {
     setTempPassword(null);
     try {
       const res = await adminUsers.resetPassword(detail.user.id, resetMode);
-      if (res.temporaryPassword) {
-        setTempPassword(res.temporaryPassword);
+      // Show whatever the server actually set, in either mode — it is the only
+      // thing that knows the configured default. `temporaryPassword` is the
+      // older field name, kept as a fallback.
+      const issued = res.password ?? res.temporaryPassword;
+      if (issued) {
+        setTempPassword(issued);
       }
       toast.success(res.message);
       await load();
@@ -320,13 +325,17 @@ function UserDetailContent() {
             </div>
           </div>
           <div className="mt-4 flex justify-end">
-            <button
+            {/* Each action below carries the capability its API route names,
+                so a VIEW user sees a disabled control with the reason instead
+                of a 403 after the click. */}
+            <PermissionButton
+              capability="user.edit"
               onClick={() => void handleSave()}
               disabled={saving}
               className="btn btn-primary"
             >
               {saving ? 'Saving…' : 'Save Profile'}
-            </button>
+            </PermissionButton>
           </div>
         </section>
 
@@ -407,13 +416,14 @@ function UserDetailContent() {
                   ))}
                 </select>
               </div>
-              <button
+              <PermissionButton
+                capability="user.changeRole"
                 onClick={() => void handleRoleChange()}
                 disabled={roleSaving || role === u.role}
                 className="btn btn-primary"
               >
                 {roleSaving ? 'Updating…' : 'Update Role'}
-              </button>
+              </PermissionButton>
             </div>
           </section>
         </div>
@@ -441,8 +451,9 @@ function UserDetailContent() {
                 <span>
                   <span className="text-chalk">Default password</span>
                   <span className="block text-chalk-dim">
-                    Resets to the platform default (123456). The user must set
-                    a new password at next login.
+                    Resets to the platform default configured for this
+                    environment — shown once the reset completes. The user must
+                    set a new password at next login.
                   </span>
                 </span>
               </label>
@@ -463,13 +474,14 @@ function UserDetailContent() {
                 </span>
               </label>
             </div>
-            <button
+            <PermissionButton
+              capability="user.resetPassword"
               onClick={() => void handleResetPassword()}
               disabled={resetting}
               className="mt-3 rounded-md border border-rose-edge px-4 py-2 text-sm text-rose hover:bg-rose-tint disabled:opacity-50"
             >
               {resetting ? 'Resetting…' : 'Reset Password'}
-            </button>
+            </PermissionButton>
             <p className="mt-2 text-xs text-chalk-dim">
               Either mode logs the user out of every device immediately.
             </p>
@@ -509,7 +521,8 @@ function UserDetailContent() {
                 ? 'The account is active and can sign in.'
                 : 'The account is deactivated and cannot sign in.'}
             </p>
-            <button
+            <PermissionButton
+              capability="user.toggleStatus"
               onClick={() => void handleToggleStatus()}
               disabled={toggling}
               className={
@@ -523,7 +536,7 @@ function UserDetailContent() {
                 : u.isActive
                   ? 'Deactivate Account'
                   : 'Activate Account'}
-            </button>
+            </PermissionButton>
           </div>
         </div>
       </section>

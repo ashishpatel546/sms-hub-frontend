@@ -7,6 +7,7 @@ import CreditBar from '@/components/ai/CreditBar';
 import PlanBadge from '@/components/ai/PlanBadge';
 import { PageHeader } from '@/components/ConsoleShell';
 import Modal from '@/components/ui/Modal';
+import PermissionButton from '@/components/ui/PermissionButton';
 import { Reveal } from '@/components/ui/Reveal';
 import toast from 'react-hot-toast';
 
@@ -196,7 +197,10 @@ export default function AiUsersPage() {
                       </td>
                       <td>
                         <div className="flex justify-end gap-1.5">
-                          <button
+                          {/* Both grants are ADMIN on the hub API — the row
+                              says so instead of a modal that 403s on submit. */}
+                          <PermissionButton
+                            capability="ai.grantCredits"
                             onClick={() => {
                               setGrantTarget(u);
                               setGrantAmount('50');
@@ -205,8 +209,9 @@ export default function AiUsersPage() {
                             className="btn btn-ghost btn-sm"
                           >
                             Credits
-                          </button>
-                          <button
+                          </PermissionButton>
+                          <PermissionButton
+                            capability="ai.grantPlan"
                             onClick={() => {
                               setPlanTarget(u);
                               setPlanValidUntil(endOfMonthStr());
@@ -216,7 +221,7 @@ export default function AiUsersPage() {
                             className="btn btn-secondary btn-sm"
                           >
                             Grant plan
-                          </button>
+                          </PermissionButton>
                         </div>
                       </td>
                     </tr>

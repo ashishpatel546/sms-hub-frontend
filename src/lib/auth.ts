@@ -18,14 +18,64 @@ export const HUB_API_BASE_URL =
  */
 export type HubRole = 'SYSTEM_ADMIN';
 
+/**
+ * What a hub user may do *inside this console* — deliberately orthogonal to
+ * `HubRole`, which stays `SYSTEM_ADMIN` for everyone because it is the
+ * cross-service claim `sms-backend` reads to admit `/admin/*` traffic.
+ *
+ * Mirrors `HubAccessLevel` in `sms-hub-backend`.
+ */
+export type HubAccessLevel = 'VIEW' | 'EDIT' | 'ADMIN';
+
+/**
+ * Ranking behind `hasAccess()`. Same numbers (and the same deliberate gaps,
+ * so a level can be slotted between two others without renumbering) as
+ * `HUB_ACCESS_HIERARCHY` in `sms-hub-backend`.
+ */
+export const HUB_ACCESS_HIERARCHY: Record<HubAccessLevel, number> = {
+  VIEW: 10,
+  EDIT: 20,
+  ADMIN: 30,
+};
+
+export const HUB_ACCESS_LEVELS: HubAccessLevel[] = ['VIEW', 'EDIT', 'ADMIN'];
+
+/** What each level means, for the places the console has to explain itself. */
+export const HUB_ACCESS_DESCRIPTIONS: Record<HubAccessLevel, string> = {
+  VIEW: 'Read-only. Can open every console screen but change nothing.',
+  EDIT: 'Can onboard schools, edit plans, coupons and billing settings.',
+  ADMIN: 'Everything, plus managing who can reach this console.',
+};
+
 export interface HubUser {
   sub: number;
   email: string;
   role: HubRole;
+  /**
+   * Hub-local privilege. Absent on tokens minted before access levels
+   * existed — see `getAccessLevel()`.
+   */
+  access?: HubAccessLevel;
+  /** Which console minted the token. `'platform'` for hub-issued ones. */
+  scope?: string;
   isChangePasswordOnly?: boolean;
+  /**
+   * Set on the 15-minute, refresh-token-less session `/auth/login` hands an
+   * account that has never enrolled in TOTP. `JwtAuthGuard` on the hub rejects
+   * such a token everywhere except `/auth/totp/status|setup|enable` and
+   * `/auth/me`, so it is a session in name only — see `isTotpSetupOnly()`.
+   */
+  isTotpSetupOnly?: boolean;
   /** Unix seconds. Absent on hand-made tokens; treated as "expired" if so. */
   exp?: number;
 }
+
+/**
+ * Where a setup-only token is allowed to land, and the only screen it can
+ * drive. `?setup=1` is what tells that screen it was sent there rather than
+ * visited by choice.
+ */
+export const TOTP_SETUP_PATH = '/dashboard/settings/security?setup=1';
 
 export function setToken(token: string): void {
   if (typeof window !== 'undefined') {
@@ -36,9 +86,25 @@ export function setToken(token: string): void {
 export function setTokens(accessToken: string, refreshToken?: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(TOKEN_KEY, accessToken);
-  // The change-password stub login returns no refresh token — don't clobber
-  // an existing one with `undefined`.
+  // Don't clobber an existing handle with `undefined` — but note that the
+  // stub logins must not take this path at all; see `setStubToken`.
   if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+/**
+ * Stores one of the two single-purpose stub tokens — "must change password"
+ * and "must enrol in two-factor" — and **drops any refresh token with it**.
+ *
+ * Neither stub comes with a refresh token, by design. Leaving an older one in
+ * place beside it would be worse than useless: `authFetch` refreshes the
+ * moment the fifteen minutes are up, and a leftover handle from an earlier
+ * session would be traded for a full one — walking straight past the gate the
+ * stub exists to impose, on a different account than the one signing in.
+ */
+export function setStubToken(accessToken: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TOKEN_KEY, accessToken);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function getToken(): string | null {
@@ -76,6 +142,44 @@ export function getUser(): HubUser | null {
 
 export function isSystemAdmin(): boolean {
   return getUser()?.role === 'SYSTEM_ADMIN';
+}
+
+/**
+ * True when the stored token is the enrolment stub rather than a session.
+ *
+ * The server is the enforcement point — it refuses this token on every route
+ * but the enrolment ones — so this exists purely so the console can route the
+ * user somewhere that works instead of letting six panels 403 in their face.
+ */
+export function isTotpSetupOnly(): boolean {
+  return getUser()?.isTotpSetupOnly === true;
+}
+
+/**
+ * The access level carried by the current token, or `null` when the claim is
+ * missing or unrecognised — which only happens for a session minted before
+ * access levels shipped. Those heal themselves: the next refresh mints a
+ * token that carries the claim.
+ */
+export function getAccessLevel(): HubAccessLevel | null {
+  const claimed = getUser()?.access;
+  return typeof claimed === 'string' && claimed in HUB_ACCESS_HIERARCHY
+    ? (claimed as HubAccessLevel)
+    : null;
+}
+
+/**
+ * Hierarchical check — `VIEW < EDIT < ADMIN`, so an ADMIN satisfies
+ * `hasAccess('VIEW')`.
+ *
+ * A missing claim is read as VIEW, the least privilege on offer, rather than
+ * as full access: a token that merely *omits* the claim must never outrank
+ * one that honestly declares VIEW. This is a UX filter only — the server
+ * fails closed on the same claim and is the actual enforcement point.
+ */
+export function hasAccess(min: HubAccessLevel): boolean {
+  const level = getAccessLevel() ?? 'VIEW';
+  return HUB_ACCESS_HIERARCHY[level] >= HUB_ACCESS_HIERARCHY[min];
 }
 
 /**

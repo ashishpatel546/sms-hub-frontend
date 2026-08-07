@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Plus, Search } from 'lucide-react';
+import { ArrowRight, KeyRound, Plus, Search } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ConsoleShell, { PageHeader } from '@/components/ConsoleShell';
 import RollCall from '@/components/RollCall';
@@ -11,7 +11,14 @@ import Readout from '@/components/ui/Readout';
 import { PlanPill, StatusPill, STATUS_INK } from '@/components/ui/Pills';
 import ChalkToaster from '@/components/ui/ChalkToaster';
 import { Reveal } from '@/components/ui/Reveal';
-import { adminSchools, type School } from '@/lib/sms-api';
+import IssueTicketDialog from '@/components/platform/IssueTicketDialog';
+import {
+  adminSchools,
+  platformTickets,
+  type MyPlatformAccess,
+  type School,
+} from '@/lib/sms-api';
+import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 /**
@@ -38,10 +45,31 @@ function DashboardContent() {
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  /**
+   * What the signed-in console user may get *themselves* into.
+   *
+   * Deliberately independent of their console access level: being a support
+   * operator is a separate grant, and a VIEW-level user who holds one still
+   * has to be able to issue their own login — that errand is the whole point
+   * of the grant. Stays `null` for everyone else, which is most people, and a
+   * `null` here renders nothing at all.
+   */
+  const [myAccess, setMyAccess] = useState<MyPlatformAccess | null>(null);
+  /** The school a self-issue dialog is open for. Never more than one. */
+  const [issuingFor, setIssuingFor] = useState<School | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
     let cancelled = false;
+    // Failures here are silent on purpose: not being an operator is the
+    // ordinary answer, and this affordance is an extra — never worth a toast
+    // in front of somebody who was not looking for it.
+    platformTickets
+      .myAccess(ctrl.signal)
+      .then((access) => {
+        if (!cancelled) setMyAccess(access);
+      })
+      .catch(() => {});
     adminSchools
       .list(true, ctrl.signal)
       .then((data) => {
@@ -74,6 +102,32 @@ function DashboardContent() {
         s.name.toLowerCase().includes(q) || s.slug.toLowerCase().includes(q),
     );
   }, [schools, search]);
+
+  /**
+   * The school ids this user may issue themselves into, or `'all'` for a
+   * blanket grant, or `null` when they are not an operator at all.
+   */
+  const grantedSchools = useMemo<Set<number> | 'all' | null>(() => {
+    if (!myAccess?.platformUser) return null;
+    if (myAccess.allSchools) return 'all';
+    return new Set(myAccess.schools.map((s) => s.id));
+  }, [myAccess]);
+
+  const canGetLoginFor = (school: School) =>
+    grantedSchools === 'all' ||
+    (grantedSchools !== null && grantedSchools.has(school.id));
+
+  /**
+   * The ceiling on each of my grants — the most a login here may ever admit,
+   * not what a session will be. `my-access` sends one per school, and sends
+   * every school (carrying the operator-level ceiling) under a blanket grant,
+   * so this map covers both shapes. A miss means the API did not say, which
+   * the dialog reads as "unknown" and leaves to the server.
+   */
+  const myCeilings = useMemo(
+    () => new Map(myAccess?.schools.map((s) => [s.id, s.maxMode]) ?? []),
+    [myAccess],
+  );
 
   const stats = useMemo(() => {
     const total = schools.length;
@@ -174,7 +228,7 @@ function DashboardContent() {
                         <div className="flex items-center gap-3">
                           {/* status rail — the row carries its own state */}
                           <span
-                            className="h-8 w-[3px] shrink-0 rounded-full"
+                            className="h-8 w-0.75 shrink-0 rounded-full"
                             style={{
                               backgroundColor:
                                 STATUS_INK[school.status] ??
@@ -206,6 +260,16 @@ function DashboardContent() {
                             </span>
                           </span>
                         </div>
+                        {/* Below lg the table scrolls sideways, and the far
+                            right of a row is the hardest thing on the screen
+                            to reach on a phone — so the action rides with the
+                            school's name, which is always in view. */}
+                        {canGetLoginFor(school) && (
+                          <GetLoginButton
+                            className="mt-2.5 lg:hidden"
+                            onClick={() => setIssuingFor(school)}
+                          />
+                        )}
                       </td>
                       <td>
                         <StatusPill status={school.status} />
@@ -227,10 +291,18 @@ function DashboardContent() {
                         })}
                       </td>
                       <td className="text-right">
-                        <ArrowRight
-                          className="ml-auto h-4 w-4 text-chalk-faint transition-all duration-150 group-hover:translate-x-0.5 group-hover:text-mint"
-                          strokeWidth={2}
-                        />
+                        <div className="flex items-center justify-end gap-2.5">
+                          {canGetLoginFor(school) && (
+                            <GetLoginButton
+                              className="hidden lg:inline-flex"
+                              onClick={() => setIssuingFor(school)}
+                            />
+                          )}
+                          <ArrowRight
+                            className="h-4 w-4 shrink-0 text-chalk-faint transition-all duration-150 group-hover:translate-x-0.5 group-hover:text-mint"
+                            strokeWidth={2}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -240,7 +312,60 @@ function DashboardContent() {
           )}
         </section>
       </Reveal>
+
+      {/* Mounted only while open, and keyed on the school — unmounting is what
+          destroys the plaintext password, which exists nowhere else. The
+          dialog is the same one the platform-access screens use, so the
+          password display, the countdown and the copy actions cannot drift. */}
+      {issuingFor && myAccess?.platformUser && (
+        <IssueTicketDialog
+          key={issuingFor.id}
+          self={{
+            operator: myAccess.platformUser,
+            school: {
+              id: issuingFor.id,
+              name: issuingFor.name,
+              slug: issuingFor.slug,
+              // What my grant here tops out at — the dialog offers read-write
+              // only where the grant actually permits it.
+              maxMode: myCeilings.get(issuingFor.id),
+            },
+          }}
+          onClose={() => setIssuingFor(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * "Let me into this school."
+ *
+ * Rendered only on rows the signed-in user is actually an operator for, at any
+ * console access level — the grant is what decides, not the level. The click
+ * must not also open the school, hence the stopped propagation: the row is a
+ * link.
+ */
+function GetLoginButton({
+  className,
+  onClick,
+}: {
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title="Issue yourself a one-time login for this school"
+      className={cn('btn btn-secondary btn-sm', className)}
+    >
+      <KeyRound className="h-3.5 w-3.5" strokeWidth={2.25} />
+      Get login
+    </button>
   );
 }
 

@@ -296,7 +296,16 @@ export interface AdminUserListResponse {
 export interface AdminResetPasswordResult {
   message: string;
   mode: 'default' | 'temporary';
-  /** Present only for mode 'temporary' — shown once, never retrievable again. */
+  /**
+   * The password that was actually set, in either mode.
+   *
+   * Always render this rather than naming a value in the UI. The console used
+   * to print a hard-coded "123456" next to the default option, which is wrong
+   * the moment `DEFAULT_PASSWORD` differs in an environment — the server is
+   * the only thing that knows what it really is.
+   */
+  password: string;
+  /** @deprecated Use `password`; retained for older responses. */
   temporaryPassword?: string;
 }
 
@@ -875,6 +884,488 @@ export const coupons = {
     }>,
   ) => smsApi.patch<Coupon>(`/admin/coupons/${id}`, body),
   deactivate: (id: number) => smsApi.delete<Coupon>(`/admin/coupons/${id}`),
+};
+
+// ── Platform access: operators, login tickets, audit trail ───────────────
+
+/**
+ * Where a school's own portal lives.
+ *
+ * Tenants are resolved from the host subdomain (`<slug>.colegios.in`), so the
+ * URL an operator has to open is derived rather than stored anywhere. The apex
+ * is overridable because the cloudflared dev tunnel serves `*.appme.in`.
+ */
+export const SCHOOL_PORTAL_DOMAIN =
+  process.env.NEXT_PUBLIC_SCHOOL_PORTAL_DOMAIN || 'colegios.in';
+
+export function schoolPortalUrl(slug: string): string {
+  return `https://${slug}.${SCHOOL_PORTAL_DOMAIN}`;
+}
+
+/** What a ticket admits the operator to do inside the school. */
+export type PlatformTicketMode = 'READ_ONLY' | 'READ_WRITE';
+
+export const PLATFORM_TICKET_MODES: PlatformTicketMode[] = [
+  'READ_ONLY',
+  'READ_WRITE',
+];
+
+export const PLATFORM_TICKET_MODE_LABELS: Record<PlatformTicketMode, string> = {
+  READ_ONLY: 'Read only',
+  READ_WRITE: 'Read and write',
+};
+
+export const PLATFORM_TICKET_MODE_DESCRIPTIONS: Record<
+  PlatformTicketMode,
+  string
+> = {
+  READ_ONLY:
+    'The operator can look at the school’s data but every write is refused. Start here — it answers most support questions.',
+  READ_WRITE:
+    'The operator can change the school’s data. Only issue this when the fix genuinely requires it.',
+};
+
+/**
+ * The most a grant will ever admit — a **ceiling**, not the mode of a session.
+ *
+ * A `READ_WRITE` grant still lets the operator take a `READ_ONLY` session for
+ * an ordinary look-around, and read-only stays the preselected choice
+ * everywhere. A `READ_ONLY` grant means write is never offered and the server
+ * refuses it outright, so the two values are not "the access" — they are the
+ * limit on it.
+ */
+export const PLATFORM_MAX_MODE_DESCRIPTIONS: Record<
+  PlatformTicketMode,
+  string
+> = {
+  READ_ONLY:
+    'Never more than read-only here. Write is not offered when a login is issued, and the server refuses it if it is asked for anyway.',
+  READ_WRITE:
+    'Write sessions are allowed here — not automatic. Read-only is still the default at issue time; this only means it can be raised.',
+};
+
+/**
+ * The modes a grant with this ceiling permits, safest first.
+ *
+ * An absent ceiling means an API that does not send one yet: offer both and
+ * leave the refusal to the server, which is the actual enforcement. Narrowing
+ * on a value we never received would hide access somebody legitimately has.
+ */
+export function platformModesUpTo(
+  ceiling: PlatformTicketMode | null | undefined,
+): PlatformTicketMode[] {
+  return ceiling === 'READ_ONLY' ? ['READ_ONLY'] : PLATFORM_TICKET_MODES;
+}
+
+export type PlatformTicketStatus =
+  | 'ISSUED'
+  | 'CONSUMED'
+  | 'EXPIRED_UNUSED'
+  | 'DENIED'
+  | 'FAILED_LOGIN';
+
+export const PLATFORM_TICKET_STATUSES: PlatformTicketStatus[] = [
+  'ISSUED',
+  'CONSUMED',
+  'EXPIRED_UNUSED',
+  'DENIED',
+  'FAILED_LOGIN',
+];
+
+export const PLATFORM_TICKET_STATUS_LABELS: Record<
+  PlatformTicketStatus,
+  string
+> = {
+  ISSUED: 'Issued',
+  CONSUMED: 'Used',
+  EXPIRED_UNUSED: 'Expired unused',
+  DENIED: 'Refused',
+  FAILED_LOGIN: 'Failed login',
+};
+
+/**
+ * The two statuses that describe an attempt the platform *refused* or that
+ * failed at the password. They are the security-relevant rows, so the console
+ * renders them apart from the ordinary lifecycle ones.
+ */
+export const PLATFORM_TICKET_ALERT_STATUSES: PlatformTicketStatus[] = [
+  'DENIED',
+  'FAILED_LOGIN',
+];
+
+export interface PlatformUserGrant {
+  schoolId: number;
+  schoolName: string | null;
+  schoolSlug: string | null;
+  /**
+   * The most this grant will ever admit. `READ_ONLY` unless an admin
+   * deliberately raised it — see `PLATFORM_MAX_MODE_DESCRIPTIONS`. Optional
+   * only so an API that predates the ceiling still types; treat a missing
+   * value as "unknown", not as permission.
+   */
+  maxMode?: PlatformTicketMode;
+  /** `hub_user.id` of whoever granted it — "who let them in" is answerable. */
+  grantedByHubUserId: number | null;
+  grantedAt: string;
+}
+
+/** One school and the ceiling to grant it at, as the write endpoints take it. */
+export interface PlatformSchoolGrantInput {
+  schoolId: number;
+  /** Defaults to `READ_ONLY` server-side when omitted. */
+  maxMode?: PlatformTicketMode;
+}
+
+/**
+ * A support operator, as the hub console sees them. There is no credential
+ * field of any kind: operators hold nothing between support requests.
+ */
+export interface PlatformUser {
+  id: number;
+  /** `hub_user.id` — the hub owns the identity, this row is its projection. */
+  hubUserId: number;
+  email: string;
+  mobile: string | null;
+  firstName: string;
+  lastName: string;
+  /** Neutral label the school sees, e.g. "School Administrator". */
+  displayName: string | null;
+  allSchools: boolean;
+  /**
+   * The operator-level ceiling, which is what a blanket `allSchools` grant is
+   * limited by — per-school grants carry their own on `schools[].maxMode`.
+   */
+  maxMode?: PlatformTicketMode;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Always `[]` when `allSchools` — the blanket grant supersedes the rows. */
+  schools: PlatformUserGrant[];
+  /**
+   * `null` when `allSchools` is true, and **null means "all", not "none"**.
+   * Anything rendering this has to say "All schools" rather than 0.
+   */
+  schoolCount: number | null;
+}
+
+/** Recent ticket history on the operator detail response. Never a hash. */
+export interface PlatformUserTicket {
+  id: number;
+  schoolId: number;
+  schoolName: string | null;
+  schoolSlug: string | null;
+  mode: PlatformTicketMode;
+  status: PlatformTicketStatus;
+  reason: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * What a revocation actually neutralised. Returned by every mutation that can
+ * take access away, so the console can tell the operator what really happened
+ * rather than just "saved".
+ */
+export interface RevocationEffect {
+  /** Still-live tickets flipped to `EXPIRED_UNUSED`. */
+  ticketsExpired: number;
+  /** Shadow `user` rows removed from inside the school. */
+  shadowUsersDeleted: number;
+  /** Shadow rows that could not be deleted (referenced) and were disabled. */
+  shadowUsersDeactivated: number;
+}
+
+/** A response that may carry a revocation summary alongside the row. */
+export type WithRevocation<T> = T & { revocation?: RevocationEffect };
+
+export interface PlatformUserDetail {
+  platformUser: PlatformUser;
+  recentTickets: PlatformUserTicket[];
+}
+
+export interface PlatformUserSearchParams {
+  email?: string;
+  name?: string;
+  isActive?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreatePlatformUserPayload {
+  hubUserId: number;
+  email: string;
+  mobile?: string | null;
+  firstName: string;
+  lastName: string;
+  displayName?: string | null;
+  allSchools?: boolean;
+  /** The ceiling on a blanket grant. Defaults to `READ_ONLY`. */
+  maxMode?: PlatformTicketMode;
+  /** Legacy shape — every school granted at the default ceiling. */
+  schoolIds?: number[];
+  /** Preferred: a ceiling per school. */
+  grants?: PlatformSchoolGrantInput[];
+}
+
+export type UpdatePlatformUserPayload = Partial<
+  Omit<CreatePlatformUserPayload, 'hubUserId' | 'schoolIds' | 'grants'>
+>;
+
+/** Every paged `/admin/platform-*` list answers in this shape. */
+export interface PlatformPage<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** The plaintext half of a ticket. Returned once and never recoverable. */
+export interface IssuedPlatformTicket {
+  /**
+   * Shown exactly once. Must never be persisted, logged or put in a share
+   * link — it lives in component state until the dialog closes.
+   */
+  password: string;
+  ticketId: number;
+  expiresAt: string;
+  mode: PlatformTicketMode;
+  school: { id: number; name: string; slug: string };
+  /** What the operator types into the school portal's login form. */
+  username: string;
+}
+
+export interface IssuePlatformTicketPayload {
+  /**
+   * Who the login admits. **Omit it to mean "me"** — that is the only shape a
+   * non-ADMIN console user may send, and it is the ordinary case: an operator
+   * letting themselves into a school they already hold. Naming somebody else
+   * hands a working credential to another person, so the server requires ADMIN
+   * for it.
+   */
+  platformUserId?: number;
+  schoolId: number;
+  mode: PlatformTicketMode;
+  /** Mandatory — an unexplained entry into a customer's data is an audit gap. */
+  reason: string;
+}
+
+/**
+ * The caller's own operator record, as `/admin/platform-tickets/my-access`
+ * returns it. Deliberately narrower than `PlatformUser`: this endpoint answers
+ * "what may *I* do", not "administer this operator", so it carries no grant
+ * rows and no counts.
+ */
+export interface MyPlatformOperator {
+  id: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  displayName: string | null;
+  allSchools: boolean;
+  isActive: boolean;
+  /** Present when the record carries one; the console only uses it to share. */
+  mobile?: string | null;
+}
+
+/**
+ * What the signed-in console user may get themselves into.
+ *
+ * `platformUser` is `null` for anyone who is not a support operator, which is
+ * most console users — the console must render nothing at all in that case
+ * rather than an empty affordance.
+ */
+export interface MyPlatformAccess {
+  platformUser: MyPlatformOperator | null;
+  /** True when the grant is blanket, so `schools` is every school there is. */
+  allSchools: boolean;
+  /**
+   * `maxMode` is the ceiling on this school's grant — the most this operator
+   * may ever ask for there, not what a session will be. Under a blanket grant
+   * every entry carries the operator-level ceiling instead.
+   */
+  schools: {
+    id: number;
+    slug: string;
+    name: string;
+    maxMode?: PlatformTicketMode;
+  }[];
+}
+
+export interface PlatformTicket {
+  id: number;
+  platformUserId: number;
+  platformUserEmail: string | null;
+  platformUserName: string | null;
+  schoolId: number;
+  schoolName: string | null;
+  schoolSlug: string | null;
+  mode: PlatformTicketMode;
+  status: PlatformTicketStatus;
+  reason: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  requesterIp: string | null;
+  createdAt: string;
+}
+
+export interface PlatformTicketSearchParams {
+  platformUserId?: number;
+  schoolId?: number;
+  status?: PlatformTicketStatus;
+  /** Inclusive lower bound on `createdAt`, ISO date or datetime. */
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * One request an operator made while inside a school portal.
+ *
+ * `action` / `entity` / `entityId` are columns the interceptor may fill in for
+ * requests it can classify, so they are optional here rather than required —
+ * a row that carries none of them is normal.
+ */
+export interface PlatformActivityRow {
+  id: number;
+  platformUserId: number | null;
+  platformUserEmail: string | null;
+  platformUserName: string | null;
+  schoolId: number | null;
+  schoolName: string | null;
+  schoolSlug: string | null;
+  ticketId: number | null;
+  method: string;
+  path: string;
+  action?: string | null;
+  entity?: string | null;
+  entityId?: number | null;
+  /** Redacted, truncated request shape. Never raw bodies, never credentials. */
+  summary: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PlatformActivitySearchParams {
+  platformUserId?: number;
+  schoolId?: number;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Drops empty values so an untouched filter never narrows the query.
+ *
+ * Typed as the interface itself rather than `Record<string, unknown>`: a plain
+ * interface has no index signature, so the wider type would reject every call
+ * site.
+ */
+function platformQuery<T extends object>(params: T): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    qs.set(key, String(value));
+  }
+  const q = qs.toString();
+  return q ? `?${q}` : '';
+}
+
+export const platformUsers = {
+  list: (params: PlatformUserSearchParams = {}, signal?: AbortSignal) =>
+    smsApi.get<PlatformPage<PlatformUser>>(
+      `/admin/platform-users${platformQuery(params)}`,
+      signal,
+    ),
+  get: (id: number, signal?: AbortSignal) =>
+    smsApi.get<PlatformUserDetail>(`/admin/platform-users/${id}`, signal),
+  /** Upserts on `hubUserId` — re-posting a known hub user refreshes it. */
+  create: (body: CreatePlatformUserPayload) =>
+    smsApi.post<PlatformUser>('/admin/platform-users', body),
+  update: (id: number, body: UpdatePlatformUserPayload) =>
+    smsApi.patch<PlatformUser>(`/admin/platform-users/${id}`, body),
+  /**
+   * Omit `isActive` to flip the current state. Deactivating also expires live
+   * tickets and clears shadow users, hence the revocation summary.
+   */
+  toggleStatus: (id: number, isActive?: boolean) =>
+    smsApi.patch<WithRevocation<PlatformUser>>(
+      `/admin/platform-users/${id}/toggle-status`,
+      isActive === undefined ? {} : { isActive },
+    ),
+  /**
+   * Replaces the whole grant set; dropped schools are revoked outright.
+   *
+   * Takes bare ids or `{ schoolId, maxMode }` and always sends the `grants`
+   * shape — a bare id is simply a grant with no explicit ceiling, which the
+   * server reads as `READ_ONLY`.
+   */
+  replaceSchools: (
+    id: number,
+    grants: Array<number | PlatformSchoolGrantInput>,
+  ) =>
+    smsApi.put<WithRevocation<PlatformUser>>(
+      `/admin/platform-users/${id}/schools`,
+      {
+        grants: grants.map((g) =>
+          typeof g === 'number' ? { schoolId: g } : g,
+        ),
+      },
+    ),
+  /** `maxMode` is the *ceiling* on this grant, not the mode of a session. */
+  grantSchool: (id: number, schoolId: number, maxMode?: PlatformTicketMode) =>
+    smsApi.post<PlatformUser>(
+      `/admin/platform-users/${id}/schools/${schoolId}`,
+      maxMode ? { maxMode } : undefined,
+    ),
+  /** Raises or lowers an existing grant's ceiling without re-granting it. */
+  setSchoolMaxMode: (
+    id: number,
+    schoolId: number,
+    maxMode: PlatformTicketMode,
+  ) =>
+    smsApi.patch<WithRevocation<PlatformUser>>(
+      `/admin/platform-users/${id}/schools/${schoolId}`,
+      { maxMode },
+    ),
+  revokeSchool: (id: number, schoolId: number) =>
+    smsApi.delete<WithRevocation<PlatformUser>>(
+      `/admin/platform-users/${id}/schools/${schoolId}`,
+    ),
+  /** Cascades the ticket history away. The activity trail survives. */
+  remove: (id: number) =>
+    smsApi.delete<{ message: string; revocation: RevocationEffect }>(
+      `/admin/platform-users/${id}`,
+    ),
+};
+
+export const platformTickets = {
+  /**
+   * The caller's own operator record and school grants.
+   *
+   * Callable by any signed-in console user at any access level, and answers
+   * `platformUser: null` when they are not an operator — so a screen can ask
+   * unconditionally and simply render nothing back.
+   */
+  myAccess: (signal?: AbortSignal) =>
+    smsApi.get<MyPlatformAccess>('/admin/platform-tickets/my-access', signal),
+  /** The response carries the only copy of the password there will ever be. */
+  issue: (body: IssuePlatformTicketPayload) =>
+    smsApi.post<IssuedPlatformTicket>('/admin/platform-tickets', body),
+  list: (params: PlatformTicketSearchParams = {}, signal?: AbortSignal) =>
+    smsApi.get<PlatformPage<PlatformTicket>>(
+      `/admin/platform-tickets${platformQuery(params)}`,
+      signal,
+    ),
+};
+
+export const platformActivity = {
+  list: (params: PlatformActivitySearchParams = {}, signal?: AbortSignal) =>
+    smsApi.get<PlatformPage<PlatformActivityRow>>(
+      `/admin/platform-activity${platformQuery(params)}`,
+      signal,
+    ),
 };
 
 /** ₹ formatting for paise amounts — the only money unit the API speaks. */

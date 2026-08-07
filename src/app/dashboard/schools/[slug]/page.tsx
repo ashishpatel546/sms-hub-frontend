@@ -15,6 +15,8 @@ import {
   type SchoolOwner,
   type SchoolProfile,
 } from '@/lib/sms-api';
+import { useCan } from '@/lib/capabilities';
+import { apiErrorMessage } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
 import FeatureOverridesSection from '@/components/billing/FeatureOverridesSection';
@@ -30,10 +32,37 @@ export default function SchoolDetailPage() {
   const router = useRouter();
 
   const [school, setSchool] = useState<School | null>(null);
-  const [secretKeys, setSecretKeys] = useState<Record<string, string | null>>(
-    {},
-  );
+  /**
+   * Masked secret values, or `null` for "we were not allowed to read them".
+   *
+   * The distinction matters: `{}` means the school genuinely has no payment
+   * secrets set, `null` means the panel has no business being on screen at
+   * all. Payment-gateway configuration is ADMIN-only, and a VIEW or EDIT user
+   * is not failing at anything by being unable to see it.
+   */
+  const [secretKeys, setSecretKeys] = useState<Record<
+    string,
+    string | null
+  > | null>({});
   const [loading, setLoading] = useState(true);
+  /** Why the school itself would not load. `null` while it is fine. */
+  const [loadError, setLoadError] = useState<{ status: number } | null>(null);
+
+  /**
+   * What this console user may change here, by the capability each section's
+   * API route actually names — served by `GET /admin/capabilities` off the
+   * same map `SystemAdminGuard` enforces with, so what is offered here cannot
+   * drift from what the server would refuse. Fails closed while loading.
+   */
+  const canEdit = useCan('school.edit');
+  const canProfile = useCan('school.profile');
+  const canLogo = useCan('school.logo');
+  const canSettings = useCan('school.settings');
+  const canSecrets = useCan('school.secrets');
+  const canSuspend = useCan('school.suspend');
+  const canActivate = useCan('school.activate');
+  const canOwnerEdit = useCan('school.owner.edit');
+  const canOwnerReset = useCan('school.owner.resetPassword');
 
   const [name, setName] = useState('');
   const [settingsKey, setSettingsKey] = useState('');
@@ -92,11 +121,21 @@ export default function SchoolDetailPage() {
     if (!slug) return;
     if (!opts?.quiet) setLoading(true);
     try {
+      /**
+       * Only the school itself is load-bearing.
+       *
+       * The secrets endpoint is ADMIN-only and the owner endpoint can legitimately
+       * have nothing to return, so a refusal on either has to cost that one
+       * section and nothing else. Letting them share a `Promise.all` rejection
+       * meant a VIEW-level user was told "School not found" about a school that
+       * was sitting right there.
+       */
       const [s, secrets, ownerInfo] = await Promise.all([
         adminSchools.get(slug),
-        adminSchools.listSecrets(slug),
+        adminSchools.listSecrets(slug).catch(() => null),
         adminSchools.getOwner(slug).catch(() => null),
       ]);
+      setLoadError(null);
       setSchool(s);
       setSecretKeys(secrets);
       setName(s.name);
@@ -125,8 +164,15 @@ export default function SchoolDetailPage() {
         setOwner(null);
       }
     } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string } };
-      toast.error(apiErr?.info?.message || 'Failed to load school');
+      const status = (err as { status?: number })?.status ?? 0;
+      setSchool(null);
+      setLoadError({ status });
+      // A refusal and a missing tenant are both explained on the page below;
+      // a toast saying the same thing again is noise. Anything else is a
+      // genuine surprise and worth shouting about.
+      if (status !== 403 && status !== 404) {
+        toast.error(apiErrorMessage(err, 'Failed to load school'));
+      }
     } finally {
       setLoading(false);
     }
@@ -366,21 +412,51 @@ export default function SchoolDetailPage() {
   }
 
   if (!school) {
+    /**
+     * Three different failures used to wear the same words. "Not found" is a
+     * statement about the platform's records, and saying it after a refusal or
+     * a dropped connection sends someone hunting for a school that exists.
+     */
+    const status = loadError?.status;
+    const notFound = status === 404;
+    const forbidden = status === 403;
+
     return (
       <ProtectedRoute requireRole="SYSTEM_ADMIN">
+        <ChalkToaster />
         <ConsoleShell>
-          <div className="grid min-h-dvh place-items-center">
-            <div className="text-center">
-              <p className="t-title text-chalk">School not found</p>
-              <p className="mt-1.5 text-[13px] text-chalk-dim">
-                No tenant is registered under this slug.
+          <div className="grid min-h-dvh place-items-center px-5">
+            <div className="max-w-md text-center">
+              <p className="t-title text-chalk">
+                {notFound
+                  ? 'School not found'
+                  : forbidden
+                    ? 'You do not have access to this school'
+                    : 'Could not load this school'}
               </p>
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="btn btn-secondary mt-5"
-              >
-                Back to schools
-              </button>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-chalk-dim">
+                {notFound
+                  ? 'No tenant is registered under this slug.'
+                  : forbidden
+                    ? 'Your console account is not allowed to open this tenant. Ask a platform administrator to raise your access level.'
+                    : 'The API could not be reached, or it answered with an error. Nothing has been changed.'}
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {!notFound && !forbidden && (
+                  <button
+                    onClick={() => void refresh()}
+                    className="btn btn-primary"
+                  >
+                    Try again
+                  </button>
+                )}
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="btn btn-secondary"
+                >
+                  Back to schools
+                </button>
+              </div>
             </div>
           </div>
         </ConsoleShell>
@@ -443,24 +519,43 @@ export default function SchoolDetailPage() {
 
             <div className="flex shrink-0 items-center gap-2.5">
               <StatusPill status={school.status} />
-              {school.status === 'ACTIVE' ? (
-                <button onClick={handleSuspend} className="btn btn-danger">
-                  Suspend
-                </button>
-              ) : (
-                <button onClick={handleActivate} className="btn btn-primary">
-                  Activate
-                </button>
-              )}
+              {/* Cutting a school's logins off is ADMIN work. Below that the
+                  status is still worth seeing — it is the lever that is not
+                  offered, not the fact. */}
+              {school.status === 'ACTIVE'
+                ? canSuspend && (
+                    <button onClick={handleSuspend} className="btn btn-danger">
+                      Suspend
+                    </button>
+                  )
+                : canActivate && (
+                    <button onClick={handleActivate} className="btn btn-primary">
+                      Activate
+                    </button>
+                  )}
             </div>
           </header>
+
+          {!canEdit && (
+            <div className="mb-4 rounded-md border border-line bg-ink-850 px-4 py-3 text-[12px] leading-relaxed text-chalk-dim">
+              <span className="font-medium text-chalk">Read-only.</span> Your
+              console account can open this school but not change it. Ask a
+              platform administrator for EDIT access if you need to.
+            </div>
+          )}
 
           <main className="space-y-4">
           <section className="panel p-6">
             <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Overview
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* A disabled fieldset disables every control inside it, which is
+                exactly the read-only shape — the values stay legible, the
+                typing does not happen, and no save button is offered below. */}
+            <fieldset
+              disabled={!canEdit}
+              className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2"
+            >
               <div>
                 <label className="field-label">
                   Name
@@ -486,15 +581,17 @@ export default function SchoolDetailPage() {
                   {new Date(school.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={handleUpdateOverview}
-                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
-              >
-                Save
-              </button>
-            </div>
+            </fieldset>
+            {canEdit && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleUpdateOverview}
+                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
+                >
+                  Save
+                </button>
+              </div>
+            )}
           </section>
 
           {owner && (
@@ -507,7 +604,10 @@ export default function SchoolDetailPage() {
                 supports login via either email or mobile, so both must
                 remain valid.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <fieldset
+                disabled={!canOwnerEdit}
+                className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2"
+              >
                 <div>
                   <label className="field-label">
                     First Name
@@ -558,7 +658,7 @@ export default function SchoolDetailPage() {
                     className="w-full border rounded-md px-3 py-2 text-sm"
                   />
                 </div>
-              </div>
+              </fieldset>
               {ownerResetPassword && (
                 <div className="mt-4 bg-ink-700 rounded-md p-4 space-y-2">
                   <p className="text-sm text-chalk-soft">
@@ -585,22 +685,35 @@ export default function SchoolDetailPage() {
                   </div>
                 </div>
               )}
-              <div className="mt-4 flex justify-between">
-                <button
-                  onClick={() => void handleResetOwnerPassword()}
-                  disabled={resettingOwnerPw}
-                  className="border border-rose-edge text-rose rounded-md px-4 py-2 text-sm hover:bg-rose-tint disabled:opacity-50"
-                >
-                  {resettingOwnerPw ? 'Resetting…' : 'Reset Password'}
-                </button>
-                <button
-                  onClick={() => void handleOwnerSave()}
-                  disabled={ownerSaving}
-                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
-                >
-                  {ownerSaving ? 'Saving…' : 'Save Owner'}
-                </button>
-              </div>
+              {/* Minting a working credential for somebody else's admin is
+                  ADMIN-only; editing their contact details is ordinary EDIT
+                  work. The two live side by side, so they are gated apart. */}
+              {(canOwnerReset || canOwnerEdit) && (
+                <div className="mt-4 flex flex-wrap justify-between gap-2">
+                  {canOwnerReset ? (
+                    <button
+                      onClick={() => void handleResetOwnerPassword()}
+                      disabled={resettingOwnerPw}
+                      className="border border-rose-edge text-rose rounded-md px-4 py-2 text-sm hover:bg-rose-tint disabled:opacity-50"
+                    >
+                      {resettingOwnerPw ? 'Resetting…' : 'Reset Password'}
+                    </button>
+                  ) : (
+                    <span className="self-center text-xs text-chalk-faint">
+                      Resetting this password needs ADMIN access.
+                    </span>
+                  )}
+                  {canOwnerEdit && (
+                    <button
+                      onClick={() => void handleOwnerSave()}
+                      disabled={ownerSaving}
+                      className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
+                    >
+                      {ownerSaving ? 'Saving…' : 'Save Owner'}
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
@@ -625,16 +738,18 @@ export default function SchoolDetailPage() {
                 })()}
               </div>
               <div className="flex-1">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  onChange={(e) =>
-                    void handleLogoChange(e.target.files?.[0] ?? null)
-                  }
-                  disabled={logoUploading}
-                  className="block text-sm text-chalk-soft file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-ink-700 file:text-chalk hover:file:bg-ink-600"
-                />
+                {canLogo && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) =>
+                      void handleLogoChange(e.target.files?.[0] ?? null)
+                    }
+                    disabled={logoUploading}
+                    className="block text-sm text-chalk-soft file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-ink-700 file:text-chalk hover:file:bg-ink-600"
+                  />
+                )}
                 <p className="text-xs text-chalk-faint mt-2">
                   PNG / JPEG / WEBP / SVG, max 5 MB. Stored at{' '}
                   <code className="font-mono">
@@ -653,7 +768,10 @@ export default function SchoolDetailPage() {
             <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Profile and contact
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <fieldset
+              disabled={!canProfile}
+              className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2"
+            >
               <div className="md:col-span-2">
                 <label className="field-label">
                   Tagline
@@ -840,18 +958,23 @@ export default function SchoolDetailPage() {
                   className="w-full border rounded-md px-3 py-2 text-sm"
                 />
               </div>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={handleProfileSave}
-                disabled={profileSaving}
-                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
-              >
-                {profileSaving ? 'Saving…' : 'Save Profile'}
-              </button>
-            </div>
+            </fieldset>
+            {canProfile && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={handleProfileSave}
+                  disabled={profileSaving}
+                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving…' : 'Save Profile'}
+                </button>
+              </div>
+            )}
           </section>
 
+          {/* Both sections read their own capabilities now (`billing.*`,
+              `school.features`) — one blanket canEdit could not tell a money
+              action from a feature toggle. */}
           <SchoolBillingSection
             slug={slug}
             refreshToken={billingVersion}
@@ -884,30 +1007,37 @@ export default function SchoolDetailPage() {
                 ))
               )}
             </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="key"
-                value={settingsKey}
-                onChange={(e) => setSettingsKey(e.target.value)}
-                className="flex-1 border rounded-md px-3 py-2 text-sm font-mono"
-              />
-              <input
-                type="text"
-                placeholder="value (JSON or string)"
-                value={settingsValue}
-                onChange={(e) => setSettingsValue(e.target.value)}
-                className="flex-1 border rounded-md px-3 py-2 text-sm font-mono"
-              />
-              <button
-                onClick={handleSettingsAdd}
-                className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
-              >
-                Set
-              </button>
-            </div>
+            {canSettings && (
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  placeholder="key"
+                  value={settingsKey}
+                  onChange={(e) => setSettingsKey(e.target.value)}
+                  className="min-w-0 flex-1 border rounded-md px-3 py-2 text-sm font-mono"
+                />
+                <input
+                  type="text"
+                  placeholder="value (JSON or string)"
+                  value={settingsValue}
+                  onChange={(e) => setSettingsValue(e.target.value)}
+                  className="min-w-0 flex-1 border rounded-md px-3 py-2 text-sm font-mono"
+                />
+                <button
+                  onClick={handleSettingsAdd}
+                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
+                >
+                  Set
+                </button>
+              </div>
+            )}
           </section>
 
+          {/* Payment-gateway configuration is ADMIN-only, and the endpoint
+              refuses anyone else — so the panel is absent rather than empty.
+              A section that renders only to say "you cannot see this" is a
+              worse answer than not raising the subject. */}
+          {secretKeys && canSecrets && (
           <section className="panel p-6">
             <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">
               Secrets
@@ -965,6 +1095,7 @@ export default function SchoolDetailPage() {
               })}
             </div>
           </section>
+          )}
           </main>
         </div>
       </ConsoleShell>

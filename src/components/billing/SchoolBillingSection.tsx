@@ -19,6 +19,7 @@ import {
   type SubscriptionAddon,
 } from '@/lib/sms-api';
 import NumberInput from '@/components/ui/NumberInput';
+import { useCan } from '@/lib/capabilities';
 import { downloadInvoicePdf } from '@/lib/billing-invoice-pdf';
 import {
   RecordPaymentDialog,
@@ -84,6 +85,20 @@ export default function SchoolBillingSection({
   refreshToken?: number;
   onSchoolChanged?: () => void;
 }) {
+  /**
+   * One capability per lever, exactly as `billing-admin.controller.ts` names
+   * them — this replaced a single `canEdit` prop, which could not tell a
+   * money action from a terms edit. Reading stays open at every level —
+   * including the invoice PDF, which is a read and not an edit — so a
+   * VIEW-level user can still answer a question about what a school pays.
+   */
+  const canSubscription = useCan('billing.subscription');
+  const canRecordPayment = useCan('billing.recordPayment');
+  const canRefund = useCan('billing.refund');
+  const canCredit = useCan('billing.credit');
+  const canAddon = useCan('billing.addon');
+  const canVoid = useCan('billing.voidInvoice');
+
   const [overview, setOverview] = useState<SchoolBillingOverview | null>(null);
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
@@ -358,7 +373,7 @@ export default function SchoolBillingSection({
             >
               {formatPaise(overview?.outstandingPaise ?? 0)}
             </p>
-            {oldestOpenInvoice && (
+            {canRecordPayment && oldestOpenInvoice && (
               <button
                 onClick={() => setPayingInvoice(oldestOpenInvoice)}
                 className="mt-0.5 text-[11px] font-medium text-mint hover:text-mint-bright"
@@ -396,12 +411,14 @@ export default function SchoolBillingSection({
                 : 'Overpayments and held refunds land here.'}
             </p>
           </div>
-          <button
-            onClick={() => void adjustCredit()}
-            className="text-xs font-medium text-mint hover:text-mint-bright"
-          >
-            Adjust credit
-          </button>
+          {canCredit && (
+            <button
+              onClick={() => void adjustCredit()}
+              className="text-xs font-medium text-mint hover:text-mint-bright"
+            >
+              Adjust credit
+            </button>
+          )}
         </div>
 
         {credit && credit.entries.length > 0 && (
@@ -445,6 +462,10 @@ export default function SchoolBillingSection({
             </p>
           )}
 
+        {/* One disabled fieldset is the whole read-only story for these terms:
+            every control inside stops accepting input, the figures stay
+            legible, and the save button below is simply not offered. */}
+        <fieldset disabled={!canSubscription} className="min-w-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="field-label">
@@ -686,25 +707,28 @@ export default function SchoolBillingSection({
             className="w-full border rounded-md px-3 py-2 text-sm"
           />
         </div>
+        </fieldset>
 
-        <div className="mt-4 flex justify-between items-center">
-          <p className="text-xs text-chalk-faint">
-            {subscription
-              ? 'Saving updates the terms from the next invoice onwards. Invoices already issued never change.'
-              : 'Saving subscribes the school and issues its first invoice.'}
-          </p>
-          <button
-            onClick={() => void save()}
-            disabled={saving}
-            className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
-          >
-            {saving
-              ? 'Saving…'
-              : subscription
-                ? 'Update Subscription'
-                : 'Assign Subscription'}
-          </button>
-        </div>
+        {canSubscription && (
+          <div className="mt-4 flex justify-between items-center">
+            <p className="text-xs text-chalk-faint">
+              {subscription
+                ? 'Saving updates the terms from the next invoice onwards. Invoices already issued never change.'
+                : 'Saving subscribes the school and issues its first invoice.'}
+            </p>
+            <button
+              onClick={() => void save()}
+              disabled={saving}
+              className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright disabled:opacity-50"
+            >
+              {saving
+                ? 'Saving…'
+                : subscription
+                  ? 'Update Subscription'
+                  : 'Assign Subscription'}
+            </button>
+          </div>
+        )}
       </section>
 
       {/*
@@ -715,13 +739,15 @@ export default function SchoolBillingSection({
       <section className="bg-ink-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between border-b pb-2 mb-1">
           <h2 className="text-lg font-semibold text-chalk">Add-on charges</h2>
-          <button
-            onClick={() => setAddingAddon(true)}
-            disabled={addonsUnavailable}
-            className="text-xs font-medium text-mint hover:text-mint-bright disabled:opacity-40"
-          >
-            Add a charge
-          </button>
+          {canAddon && (
+            <button
+              onClick={() => setAddingAddon(true)}
+              disabled={addonsUnavailable}
+              className="text-xs font-medium text-mint hover:text-mint-bright disabled:opacity-40"
+            >
+              Add a charge
+            </button>
+          )}
         </div>
         <p className="mb-4 text-xs text-chalk-faint">
           Extras charged on top of the plan, at face value — after every
@@ -776,22 +802,24 @@ export default function SchoolBillingSection({
                     )}
                   </p>
                 </div>
-                <div className="shrink-0 whitespace-nowrap">
-                  <button
-                    onClick={() => setEditingAddon(addon)}
-                    className="mr-3 text-xs text-chalk-dim hover:text-chalk"
-                  >
-                    Edit
-                  </button>
-                  {addon.isActive && (
+                {canAddon && (
+                  <div className="shrink-0 whitespace-nowrap">
                     <button
-                      onClick={() => void retireAddon(addon)}
-                      className="text-xs text-chalk-faint hover:text-rose"
+                      onClick={() => setEditingAddon(addon)}
+                      className="mr-3 text-xs text-chalk-dim hover:text-chalk"
                     >
-                      Stop charging
+                      Edit
                     </button>
-                  )}
-                </div>
+                    {addon.isActive && (
+                      <button
+                        onClick={() => void retireAddon(addon)}
+                        className="text-xs text-chalk-faint hover:text-rose"
+                      >
+                        Stop charging
+                      </button>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -818,12 +846,15 @@ export default function SchoolBillingSection({
       <section className="bg-ink-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between border-b pb-2 mb-4">
           <h2 className="text-lg font-semibold text-chalk">Invoices</h2>
-          <button
-            onClick={() => void extendGrace()}
-            className="text-xs font-medium text-mint hover:text-mint-bright"
-          >
-            Extend grace period
-          </button>
+          {/* Extend-grace is a subscription-terms route on the API. */}
+          {canSubscription && (
+            <button
+              onClick={() => void extendGrace()}
+              className="text-xs font-medium text-mint hover:text-mint-bright"
+            >
+              Extend grace period
+            </button>
+          )}
         </div>
 
         {invoices.length === 0 ? (
@@ -907,25 +938,30 @@ export default function SchoolBillingSection({
                         {downloadingId === invoice.id ? 'Preparing…' : 'PDF'}
                       </button>
 
-                      {invoice.status !== 'VOID' && invoice.balancePaise > 0 && (
-                        <button
-                          onClick={() => setPayingInvoice(invoice)}
-                          className="text-xs text-mint hover:text-mint-bright mr-3"
-                        >
-                          Record payment
-                        </button>
-                      )}
+                      {canRecordPayment &&
+                        invoice.status !== 'VOID' &&
+                        invoice.balancePaise > 0 && (
+                          <button
+                            onClick={() => setPayingInvoice(invoice)}
+                            className="text-xs text-mint hover:text-mint-bright mr-3"
+                          >
+                            Record payment
+                          </button>
+                        )}
 
-                      {invoice.status !== 'VOID' && invoice.settledPaise > 0 && (
-                        <button
-                          onClick={() => setRefundingInvoice(invoice)}
-                          className="text-xs text-amber hover:text-amber-300 mr-3"
-                        >
-                          Return money
-                        </button>
-                      )}
+                      {canRefund &&
+                        invoice.status !== 'VOID' &&
+                        invoice.settledPaise > 0 && (
+                          <button
+                            onClick={() => setRefundingInvoice(invoice)}
+                            className="text-xs text-amber hover:text-amber-300 mr-3"
+                          >
+                            Return money
+                          </button>
+                        )}
 
-                      {invoice.status !== 'VOID' &&
+                      {canVoid &&
+                        invoice.status !== 'VOID' &&
                         invoice.settledPaise <= 0 && (
                           <button
                             onClick={() => void voidInvoice(invoice)}

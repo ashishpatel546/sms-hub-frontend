@@ -2,8 +2,17 @@ import { authFetch, HUB_API_BASE_URL } from './auth';
 
 export const API_BASE_URL = HUB_API_BASE_URL;
 
-/** Endpoints that must never carry a token or trigger the refresh/logout path. */
-const UNAUTHENTICATED_PATHS = ['/auth/login', '/auth/refresh-token'];
+/**
+ * Endpoints that must never carry a token or trigger the refresh/logout path.
+ * `/auth/totp/recovery` belongs here for the same reason `/auth/login` does:
+ * it is how somebody signs in, so a stale token left in localStorage must not
+ * turn a wrong recovery code into a forced sign-out.
+ */
+const UNAUTHENTICATED_PATHS = [
+  '/auth/login',
+  '/auth/refresh-token',
+  '/auth/totp/recovery',
+];
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
@@ -48,8 +57,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'POST',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'PATCH',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   upload: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: 'POST', body: formData }),
