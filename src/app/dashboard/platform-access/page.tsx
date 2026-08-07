@@ -930,6 +930,11 @@ function OperatorDialog({
     const chosen = hubAccounts?.find((u) => String(u.id) === id);
     if (!chosen) return;
     setEmail(chosen.email);
+    // Assigned unconditionally, blank included: this number is where a
+    // ticket handover sends the login link, so a number left over from a
+    // previously picked account would aim it at the wrong person. An
+    // operator whose hub account has no mobile should read as having none.
+    setMobile(chosen.mobile ?? '');
     // `name` is one free-text field on the hub side; split it so the two
     // required name columns are prefilled rather than left blank.
     const parts = (chosen.name ?? '').trim().split(/\s+/).filter(Boolean);
