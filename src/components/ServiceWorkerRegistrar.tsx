@@ -28,9 +28,12 @@ export default function ServiceWorkerRegistrar() {
       onControllerChange,
     );
 
+    let registrationRef: ServiceWorkerRegistration | null = null;
+
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
+        registrationRef = registration;
         if (registration.waiting) {
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
@@ -49,16 +52,35 @@ export default function ServiceWorkerRegistrar() {
             }
           });
         });
+
+        // The browser's own update check is tied to navigation and throttled
+        // to roughly once/24h — and an installed home-screen PWA that is
+        // mostly just resumed, not freshly navigated to, can go far longer
+        // than that without one. Force a real check right away rather than
+        // trusting that timer.
+        void registration.update();
       })
       .catch((err) => {
         console.warn('[SW] registration failed:', err);
       });
+
+    // Covers the actual common case: someone reopens the installed app (or
+    // pulls to refresh) hours or days after the last check. Re-check every
+    // time the app comes back to the foreground so a stale worker doesn't
+    // just sit there until someone thinks to clear site data.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void registrationRef?.update();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       navigator.serviceWorker.removeEventListener(
         'controllerchange',
         onControllerChange,
       );
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 

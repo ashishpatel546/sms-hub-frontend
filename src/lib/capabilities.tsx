@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import toast from 'react-hot-toast';
 import { api } from './api';
 import { smsApi } from './sms-api';
 import { getUser, type HubAccessLevel } from './auth';
@@ -162,10 +163,25 @@ async function fetchCapabilities(): Promise<CapabilityState> {
   if (sms.status === 'fulfilled') {
     Object.assign(next.can, sms.value.can);
     next.smsAccessLevel = sms.value.accessLevel;
+  } else {
+    // Failing closed here is correct, but doing it silently means a genuine
+    // outage (bad NEXT_PUBLIC_SMS_API_URL, CORS, an expired token, the box
+    // being unreachable from this network) reads identically to "you're not
+    // allowed" — which is how a real bug once cost a whole afternoon to spot
+    // on a device that could not reach localhost. Say which side failed.
+    console.error('[capabilities] sms-backend fetch failed:', sms.reason);
+    toast.error(
+      'Could not load school/billing permissions — some controls may be hidden. Check your connection and reload.',
+    );
   }
   if (hub.status === 'fulfilled') {
     Object.assign(next.can, hub.value.can);
     next.hubAccessLevel = hub.value.accessLevel;
+  } else {
+    console.error('[capabilities] hub-backend fetch failed:', hub.reason);
+    toast.error(
+      'Could not load hub permissions — some controls may be hidden. Check your connection and reload.',
+    );
   }
   return next;
 }

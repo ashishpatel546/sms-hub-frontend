@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Country, State, City } from 'country-state-city';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, QrCode } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ConsoleShell from '@/components/ConsoleShell';
 import ChalkToaster from '@/components/ui/ChalkToaster';
@@ -20,6 +20,7 @@ import { apiErrorMessage } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
 import FeatureOverridesSection from '@/components/billing/FeatureOverridesSection';
+import InstallGuideDialog from '@/components/schools/InstallGuideDialog';
 
 const KNOWN_SECRETS = [
   { key: 'razorpay_key_id', label: 'Razorpay Key ID' },
@@ -69,6 +70,7 @@ export default function SchoolDetailPage() {
   const [settingsValue, setSettingsValue] = useState('');
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
   const [billingVersion, setBillingVersion] = useState(0);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   // ── Profile state ──────────────────────────────────────────────────
   const [profile, setProfile] = useState<SchoolProfile>({});
@@ -519,6 +521,17 @@ export default function SchoolDetailPage() {
 
             <div className="flex shrink-0 items-center gap-2.5">
               <StatusPill status={school.status} />
+              {/* A read of data the page already renders, not an edit — same
+                  reasoning as the invoice PDF download, so it's offered to
+                  anyone who can open this school, not gated behind a
+                  capability. */}
+              <button
+                onClick={() => setGuideOpen(true)}
+                className="btn btn-secondary"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                Install guide
+              </button>
               {/* Cutting a school's logins off is ADMIN work. Below that the
                   status is still worth seeing — it is the lever that is not
                   offered, not the fact. */}
@@ -999,33 +1012,35 @@ export default function SchoolDetailPage() {
                 Object.entries(school.settings ?? {}).map(([k, v]) => (
                   <div
                     key={k}
-                    className="flex justify-between text-sm font-mono bg-ink-850 px-3 py-2 rounded"
+                    className="flex flex-col gap-1 text-sm font-mono bg-ink-850 px-3 py-2 rounded md:flex-row md:items-baseline md:justify-between md:gap-3"
                   >
-                    <span className="text-chalk-soft">{k}</span>
-                    <span className="text-chalk-dim">{JSON.stringify(v)}</span>
+                    <span className="text-chalk-soft break-all">{k}</span>
+                    <span className="text-chalk-dim break-all md:text-right">
+                      {JSON.stringify(v)}
+                    </span>
                   </div>
                 ))
               )}
             </div>
             {canSettings && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
                 <input
                   type="text"
                   placeholder="key"
                   value={settingsKey}
                   onChange={(e) => setSettingsKey(e.target.value)}
-                  className="min-w-0 flex-1 border rounded-md px-3 py-2 text-sm font-mono"
+                  className="min-w-0 border rounded-md px-3 py-2 text-sm font-mono md:flex-1"
                 />
                 <input
                   type="text"
                   placeholder="value (JSON or string)"
                   value={settingsValue}
                   onChange={(e) => setSettingsValue(e.target.value)}
-                  className="min-w-0 flex-1 border rounded-md px-3 py-2 text-sm font-mono"
+                  className="min-w-0 border rounded-md px-3 py-2 text-sm font-mono md:flex-1"
                 />
                 <button
                   onClick={handleSettingsAdd}
-                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright"
+                  className="bg-mint text-ink-950 rounded-md px-4 py-2 text-sm hover:bg-mint-bright md:shrink-0"
                 >
                   Set
                 </button>
@@ -1051,15 +1066,23 @@ export default function SchoolDetailPage() {
               {KNOWN_SECRETS.map(({ key, label }) => {
                 const masked = secretKeys[key];
                 return (
-                  <div key={key} className="flex items-center gap-2">
-                    <div className="w-48">
+                  <div
+                    key={key}
+                    className="flex flex-col gap-2 rounded-md bg-ink-850 p-3 md:flex-row md:items-center md:gap-3 md:bg-transparent md:p-0"
+                  >
+                    <div className="md:w-48 md:shrink-0">
                       <p className="text-sm font-medium text-chalk-soft">
                         {label}
                       </p>
                       <p className="text-xs font-mono text-chalk-faint">{key}</p>
                     </div>
-                    <div className="flex-1 flex items-center gap-2">
-                      <span className="text-xs text-chalk-dim w-20">
+                    {/* Mobile gets its own dedicated line per control (full-
+                        width input, then a button row) instead of trying to
+                        co-exist with the label and masked-value text on one
+                        wrapping line — flex-shrink math is easy to get wrong
+                        by a few px, a hard line break never overflows. */}
+                    <div className="flex flex-col gap-2 md:min-w-0 md:flex-1 md:flex-row md:flex-nowrap md:items-center">
+                      <span className="text-xs text-chalk-dim md:shrink-0">
                         {masked ?? <em>(not set)</em>}
                       </span>
                       <input
@@ -1072,23 +1095,25 @@ export default function SchoolDetailPage() {
                             [key]: e.target.value,
                           }))
                         }
-                        className="flex-1 border rounded-md px-3 py-2 text-sm font-mono"
+                        className="w-full min-w-0 border rounded-md px-3 py-2 text-sm font-mono md:flex-1"
                       />
-                      <button
-                        onClick={() => void handleSecretSave(key)}
-                        disabled={!secretInputs[key]}
-                        className="bg-mint text-ink-950 rounded-md px-3 py-2 text-xs hover:bg-mint-bright disabled:opacity-40"
-                      >
-                        Save
-                      </button>
-                      {masked && (
+                      <div className="flex gap-2">
                         <button
-                          onClick={() => void handleSecretDelete(key)}
-                          className="border border-rose-edge text-rose rounded-md px-2 py-2 text-xs hover:bg-rose-tint"
+                          onClick={() => void handleSecretSave(key)}
+                          disabled={!secretInputs[key]}
+                          className="flex-1 bg-mint text-ink-950 rounded-md px-3 py-2 text-xs hover:bg-mint-bright disabled:opacity-40 md:flex-initial md:shrink-0"
                         >
-                          Delete
+                          Save
                         </button>
-                      )}
+                        {masked && (
+                          <button
+                            onClick={() => void handleSecretDelete(key)}
+                            className="flex-1 border border-rose-edge text-rose rounded-md px-2 py-2 text-xs hover:bg-rose-tint md:flex-initial md:shrink-0"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1099,6 +1124,13 @@ export default function SchoolDetailPage() {
           </main>
         </div>
       </ConsoleShell>
+      {guideOpen && (
+        <InstallGuideDialog
+          open
+          onClose={() => setGuideOpen(false)}
+          school={school}
+        />
+      )}
     </ProtectedRoute>
   );
 }

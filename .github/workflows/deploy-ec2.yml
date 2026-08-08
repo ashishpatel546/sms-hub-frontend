@@ -35,6 +35,7 @@ jobs:
           NEXT_PUBLIC_HUB_API_URL: ${{ vars.NEXT_PUBLIC_HUB_API_URL }}
           NEXT_PUBLIC_SMS_API_URL: ${{ vars.NEXT_PUBLIC_SMS_API_URL }}
           NEXT_PUBLIC_APP_NAME: ${{ vars.NEXT_PUBLIC_APP_NAME }}
+          NEXT_PUBLIC_SCHOOL_PORTAL_DOMAIN: ${{ vars.NEXT_PUBLIC_SCHOOL_PORTAL_DOMAIN }}
         run: npm run build
 
       - name: Deploy to EC2 - Prepare Environment
