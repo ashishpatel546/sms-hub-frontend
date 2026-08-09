@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { captureRunningBuild } from '@/lib/app-version';
 
 /**
  * Registers the service worker and forces a new one to take over as soon as it
@@ -9,6 +10,16 @@ import { useEffect } from 'react';
  * than offered as a prompt.
  */
 export default function ServiceWorkerRegistrar() {
+  /* Pin which build this page is running, as early as anything mounts.
+     Everything below depends on sw.js's own BYTES changing to notice a
+     deployment, which means depending on somebody remembering to bump a
+     constant in it; `lib/app-version.ts` explains what that cost the school
+     app. Deliberately outside the service-worker branch and the production
+     guard: a browser with no worker support goes stale the same way. */
+  useEffect(() => {
+    void captureRunningBuild();
+  }, []);
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     // A worker registered by `next dev` would serve stale bundles between
