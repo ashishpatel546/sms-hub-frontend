@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
 import NumberInput from '@/components/ui/NumberInput';
+import PermissionButton from '@/components/ui/PermissionButton';
 import {
   adminBilling,
   billingConfig,
@@ -172,20 +173,24 @@ function RunBillingPanel() {
           </div>
         )}
 
-        <button
+        {/* Running billing mints real invoices across every school — ADMIN
+            on the API (`billing.runJob`), and the dry run shares the route. */}
+        <PermissionButton
+          capability="billing.runJob"
           onClick={() => run(true)}
           disabled={running}
           className="px-4 py-2 rounded-lg text-sm font-semibold border border-line text-chalk-soft hover:bg-ink-700 disabled:opacity-50"
         >
           Preview
-        </button>
-        <button
+        </PermissionButton>
+        <PermissionButton
+          capability="billing.runJob"
           onClick={() => run(false)}
           disabled={running}
           className="px-4 py-2 rounded-lg text-sm font-semibold bg-mint text-ink-950 hover:bg-mint-bright disabled:bg-ink-600"
         >
           {running ? 'Running…' : 'Run'}
-        </button>
+        </PermissionButton>
       </div>
 
       <p className="text-[11px] text-chalk-faint">
@@ -379,13 +384,14 @@ function VolumeSlabsPanel() {
         >
           + Add band
         </button>
-        <button
+        <PermissionButton
+          capability="billingSlab.manage"
           onClick={save}
           disabled={saving}
           className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-mint text-ink-950 hover:bg-mint-bright disabled:bg-ink-600"
         >
           {saving ? 'Saving…' : 'Save slabs'}
-        </button>
+        </PermissionButton>
       </div>
     </div>
   );
@@ -669,13 +675,14 @@ export default function BillingSettingsPage() {
       </div>
 
       <div className="flex justify-end">
-        <button
+        <PermissionButton
+          capability="billing.config"
           onClick={save}
           disabled={!dirty || saving}
           className="px-5 py-2 rounded-lg text-sm font-semibold bg-mint text-ink-950 disabled:bg-ink-600 disabled:text-chalk-faint hover:bg-mint-bright transition-colors"
         >
           {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-        </button>
+        </PermissionButton>
       </div>
     </div>
   );

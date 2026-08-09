@@ -54,8 +54,8 @@ export default function AiOverviewPage() {
 
       {loading ? (
         <div className="space-y-4">
-          <div className="panel h-[86px] animate-pulse" />
-          <div className="panel h-[168px] animate-pulse" />
+          <div className="panel h-21.5 animate-pulse" />
+          <div className="panel h-42 animate-pulse" />
         </div>
       ) : data ? (
         <div className="space-y-4">
@@ -140,7 +140,7 @@ function Term({
   dp?: number;
 }) {
   return (
-    <div className="min-w-[130px]">
+    <div className="min-w-32.5">
       <p className="t-eyebrow">{label}</p>
       <p className={`t-num mt-1.5 text-[26px] ${accent}`}>
         <NumberTicker value={value} format={(n) => inr(n, dp)} />

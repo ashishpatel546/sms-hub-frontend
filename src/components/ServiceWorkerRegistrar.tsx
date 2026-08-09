@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { captureRunningBuild } from '@/lib/app-version';
 
 /**
  * Registers the service worker and forces a new one to take over as soon as it
@@ -9,6 +10,16 @@ import { useEffect } from 'react';
  * than offered as a prompt.
  */
 export default function ServiceWorkerRegistrar() {
+  /* Pin which build this page is running, as early as anything mounts.
+     Everything below depends on sw.js's own BYTES changing to notice a
+     deployment, which means depending on somebody remembering to bump a
+     constant in it; `lib/app-version.ts` explains what that cost the school
+     app. Deliberately outside the service-worker branch and the production
+     guard: a browser with no worker support goes stale the same way. */
+  useEffect(() => {
+    void captureRunningBuild();
+  }, []);
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     // A worker registered by `next dev` would serve stale bundles between
@@ -28,9 +39,12 @@ export default function ServiceWorkerRegistrar() {
       onControllerChange,
     );
 
+    let registrationRef: ServiceWorkerRegistration | null = null;
+
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
+        registrationRef = registration;
         if (registration.waiting) {
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
@@ -49,16 +63,35 @@ export default function ServiceWorkerRegistrar() {
             }
           });
         });
+
+        // The browser's own update check is tied to navigation and throttled
+        // to roughly once/24h — and an installed home-screen PWA that is
+        // mostly just resumed, not freshly navigated to, can go far longer
+        // than that without one. Force a real check right away rather than
+        // trusting that timer.
+        void registration.update();
       })
       .catch((err) => {
         console.warn('[SW] registration failed:', err);
       });
+
+    // Covers the actual common case: someone reopens the installed app (or
+    // pulls to refresh) hours or days after the last check. Re-check every
+    // time the app comes back to the foreground so a stale worker doesn't
+    // just sit there until someone thinks to clear site data.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void registrationRef?.update();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       navigator.serviceWorker.removeEventListener(
         'controllerchange',
         onControllerChange,
       );
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 

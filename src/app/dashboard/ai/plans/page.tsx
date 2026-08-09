@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import { Trash2, Plus, X, Cpu, RefreshCw, Settings2, IndianRupee, UserCheck } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
 import NumberInput from '@/components/ui/NumberInput';
+import PermissionButton from '@/components/ui/PermissionButton';
+import { useCan, useCapabilities } from '@/lib/capabilities';
 
 const FEATURES = [
   { key: 'chat', label: 'Student Chat' },
@@ -186,7 +188,7 @@ function ManageModelsModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-[12rem] max-h-72 border border-line rounded-md p-2">
+        <div className="flex-1 overflow-y-auto min-h-48 max-h-72 border border-line rounded-md p-2">
           {error ? (
             <p className="text-xs text-rose p-2">{error}</p>
           ) : !models ? (
@@ -1030,13 +1032,14 @@ function PlanCard({
             />
             Active
           </label>
-          <button
+          <PermissionButton
+            capability="ai.plan.manage"
             onClick={() => setConfirmDelete(true)}
-            className="p-1.5 text-rose hover:text-rose hover:bg-rose-tint rounded-lg transition-colors"
+            className="p-1.5 text-rose hover:text-rose hover:bg-rose-tint rounded-lg transition-colors disabled:opacity-40"
             title="Delete plan"
           >
             <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          </PermissionButton>
         </div>
       </div>
 
@@ -1140,13 +1143,14 @@ function PlanCard({
         </div>
       </div>
 
-      <button
+      <PermissionButton
+        capability="ai.plan.manage"
         onClick={save}
         disabled={saving}
         className="w-full bg-iris text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-iris-bright disabled:opacity-50"
       >
         {saving ? 'Saving…' : 'Save changes'}
-      </button>
+      </PermissionButton>
 
       {/* Delete confirmation */}
       {confirmDelete && (
@@ -1172,6 +1176,10 @@ function PlanCard({
 }
 
 export default function AiPlansPage() {
+  const { ready: capsReady } = useCapabilities();
+  const canLlmTiers = useCan('ai.llmTiers');
+  const canLlmPricing = useCan('ai.llmPricing');
+  const canFeatureRoles = useCan('ai.featureRoles');
   const [plans, setPlans] = useState<AiPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all');
@@ -1234,7 +1242,8 @@ export default function AiPlansPage() {
         title="Plans"
         description="Features, credits and pricing for each tier, and the model economics behind them."
         actions={
-          <button
+          <PermissionButton
+            capability="ai.plan.manage"
             onClick={() => {
               const firstTier = tierList(econ?.tiers)[0]?.value ?? 1;
               setCreateForm((f) => ({ ...f, model_tier: firstTier }));
@@ -1243,15 +1252,25 @@ export default function AiPlansPage() {
             className="btn btn-primary"
           >
             <Plus className="h-4 w-4" strokeWidth={2.25} /> New plan
-          </button>
+          </PermissionButton>
         }
       />
 
-      <ModelTiersPanel onSaved={loadEcon} />
+      {/* Tier, pricing and feature-role config are ADMIN-only on the hub API
+          — reads included — so below that the panels are absent rather than
+          empty shells whose every fetch 403s. Skeleton until the capability
+          answer lands, so ADMINs don't watch panels pop in. */}
+      {!capsReady ? (
+        <div className="h-24 bg-ink-700 rounded-lg animate-pulse" />
+      ) : (
+        <>
+          {canLlmTiers && <ModelTiersPanel onSaved={loadEcon} />}
 
-      <ModelPricingPanel plans={plans} onSaved={loadEcon} />
+          {canLlmPricing && <ModelPricingPanel plans={plans} onSaved={loadEcon} />}
 
-      <FeatureRolesPanel />
+          {canFeatureRoles && <FeatureRolesPanel />}
+        </>
+      )}
 
       {/* Type filter */}
       <div className="flex gap-2 flex-wrap">
@@ -1423,9 +1442,9 @@ export default function AiPlansPage() {
               <button onClick={() => setShowCreate(false)} className="flex-1 border border-line rounded-md py-2 text-sm text-chalk-soft hover:bg-ink-700">
                 Cancel
               </button>
-              <button onClick={handleCreate} disabled={creating} className="flex-1 bg-iris text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-iris-bright disabled:opacity-50">
+              <PermissionButton capability="ai.plan.manage" onClick={handleCreate} disabled={creating} className="flex-1 bg-iris text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-iris-bright disabled:opacity-50">
                 {creating ? 'Creating…' : 'Create Plan'}
-              </button>
+              </PermissionButton>
             </div>
           </div>
         </div>

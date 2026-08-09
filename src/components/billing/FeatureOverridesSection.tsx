@@ -11,6 +11,7 @@ import {
   type SchoolFeatureBreakdown,
   type SubscriptionAddon,
 } from '@/lib/sms-api';
+import { useCan } from '@/lib/capabilities';
 import AddonDialog from './AddonDialog';
 
 /**
@@ -128,6 +129,16 @@ export default function FeatureOverridesSection({
   /** Raised when a charge is agreed here, so the billing panel can pick it up. */
   onAddonsChanged?: () => void;
 }) {
+  /**
+   * The two capabilities this panel spends, read off the server's own map
+   * (replacing a `canEdit` prop): toggles and resets write the override
+   * (`school.features`), while pricing one is a billing add-on. A VIEW-level
+   * user gets the same panel with every lever withdrawn rather than a row of
+   * buttons that would 403.
+   */
+  const canFeatures = useCan('school.features');
+  const canAddon = useCan('billing.addon');
+
   const [breakdown, setBreakdown] = useState<SchoolFeatureBreakdown | null>(
     null,
   );
@@ -339,7 +350,7 @@ export default function FeatureOverridesSection({
                           </span>
                         )}
 
-                        {row.override !== null && (
+                        {canFeatures && row.override !== null && (
                           <button
                             onClick={() =>
                               void setOverride(row.entry.key, null)
@@ -358,7 +369,7 @@ export default function FeatureOverridesSection({
                             price attached. Restricting it to overrides left
                             schools whose plan covers everything with no way to
                             price anything at all. */}
-                        {row.enabled && !row.addon && (
+                        {canAddon && row.enabled && !row.addon && (
                           <button
                             onClick={() => setChargingFeature(row.entry)}
                             className="text-[11px] text-mint underline-offset-2 transition-colors hover:underline"
@@ -380,7 +391,7 @@ export default function FeatureOverridesSection({
                     <Toggle
                       label={row.entry.label}
                       checked={row.enabled}
-                      disabled={pending === row.entry.key}
+                      disabled={!canFeatures || pending === row.entry.key}
                       onChange={(next) =>
                         void setOverride(
                           row.entry.key,

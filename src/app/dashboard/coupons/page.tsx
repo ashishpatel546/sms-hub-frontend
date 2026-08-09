@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Plus, Search, Ticket, X } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
 import NumberInput from '@/components/ui/NumberInput';
+import PermissionButton from '@/components/ui/PermissionButton';
 import {
   coupons,
   formatPaise,
@@ -281,13 +282,14 @@ function CreateCouponModal({
           >
             Cancel
           </button>
-          <button
+          <PermissionButton
+            capability="coupon.manage"
             onClick={submit}
             disabled={saving}
             className="px-4 py-2 bg-mint text-ink-950 rounded-lg text-sm font-semibold disabled:bg-ink-600 hover:bg-mint-bright"
           >
             {saving ? 'Creating…' : 'Create Coupon'}
-          </button>
+          </PermissionButton>
         </div>
       </div>
     </div>
@@ -348,12 +350,13 @@ export default function CouponsPage() {
         title="Coupons"
         description="Discount codes a school can apply at checkout."
         actions={
-          <button
+          <PermissionButton
+            capability="coupon.manage"
             onClick={() => setShowCreate(true)}
             className="btn btn-primary"
           >
             <Plus className="h-4 w-4" strokeWidth={2.25} /> New coupon
-          </button>
+          </PermissionButton>
         }
       />
 
@@ -552,7 +555,8 @@ export default function CouponsPage() {
                             </button>
                           )}
                           {coupon.isActive && (
-                            <button
+                            <PermissionButton
+                              capability="coupon.manage"
                               onClick={async () => {
                                 if (
                                   !confirm(
@@ -570,10 +574,10 @@ export default function CouponsPage() {
                                   );
                                 }
                               }}
-                              className="text-xs text-chalk-faint hover:text-rose"
+                              className="text-xs text-chalk-faint hover:text-rose disabled:opacity-40"
                             >
                               Deactivate
-                            </button>
+                            </PermissionButton>
                           )}
                         </td>
                       </tr>

@@ -15,6 +15,7 @@ import {
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ConsoleShell, { PageHeader } from '@/components/ConsoleShell';
 import ChalkToaster from '@/components/ui/ChalkToaster';
+import PermissionButton from '@/components/ui/PermissionButton';
 import BorderBeam from '@/components/ui/BorderBeam';
 import { Reveal } from '@/components/ui/Reveal';
 import {
@@ -224,7 +225,7 @@ export default function NewSchoolPage() {
                   <button
                     type="button"
                     onClick={copyPassword}
-                    className="btn btn-secondary h-[46px]"
+                    className="btn btn-secondary h-11.5"
                   >
                     {copied ? (
                       <>
@@ -570,7 +571,11 @@ export default function NewSchoolPage() {
                   >
                     Cancel
                   </button>
-                  <button
+                  {/* The nav hides this page from VIEW users, but a typed-in
+                      URL still lands here — the submit says why it is off
+                      instead of erroring after the form is filled in. */}
+                  <PermissionButton
+                    capability="school.create"
                     type="submit"
                     disabled={loading}
                     className="btn btn-primary"
@@ -583,7 +588,7 @@ export default function NewSchoolPage() {
                     ) : (
                       'Create school'
                     )}
-                  </button>
+                  </PermissionButton>
                 </div>
               </Reveal>
             </form>

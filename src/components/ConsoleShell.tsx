@@ -6,20 +6,33 @@ import { useState } from 'react';
 import {
   Building2,
   CreditCard,
+  KeyRound,
   LogOut,
   Menu,
   Plus,
   Receipt,
-  Settings,
+  ScrollText,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Ticket,
+  UserCog,
   Users,
   Wallet,
   X,
 } from 'lucide-react';
-import { getUser, logout } from '@/lib/auth';
+import {
+  getAccessLevel,
+  getUser,
+  isTotpSetupOnly,
+  logout,
+  HUB_ACCESS_HIERARCHY,
+  type HubAccessLevel,
+} from '@/lib/auth';
 import { Mark } from '@/components/ui/Mark';
+import PullToRefresh from '@/components/ui/PullToRefresh';
+import { CapabilityProvider } from '@/lib/capabilities';
+import { useClientValue } from '@/lib/client-value';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,14 +47,47 @@ import { cn } from '@/lib/utils';
  * Purely presentational. Auth gating stays in ProtectedRoute where it was.
  */
 
-type NavItem = { href: string; label: string; icon: React.ElementType; exact?: boolean };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  exact?: boolean;
+  /** Lowest access level that may open this screen. Defaults to VIEW. */
+  minAccess?: HubAccessLevel;
+};
 
-const NAV: { group: string; items: NavItem[] }[] = [
+type NavGroup = {
+  group: string;
+  /** Gates the whole group before its items are even considered. */
+  minAccess?: HubAccessLevel;
+  items: NavItem[];
+};
+
+/**
+ * `minAccess` per item, read against the access level on the current token.
+ *
+ * The rule: a link asks for the lowest level that can do the *primary* job
+ * of the page it points at. Screens that mainly list or search are VIEW;
+ * screens that exist to create or change something are EDIT; screens that
+ * govern the console itself are ADMIN. A VIEW user therefore still reaches
+ * a page whose write actions the API will refuse — that is the intent, since
+ * looking is the point of the level.
+ *
+ * This is navigation, not enforcement: `sms-hub-backend` fails closed on the
+ * same claim, and page-level `ProtectedRoute requireAccess` is what stops a
+ * typed-in URL.
+ */
+const NAV: NavGroup[] = [
   {
     group: 'Tenants',
     items: [
       { href: '/dashboard', label: 'Schools', icon: Building2, exact: true },
-      { href: '/dashboard/schools/new', label: 'Onboard school', icon: Plus },
+      {
+        href: '/dashboard/schools/new',
+        label: 'Onboard school',
+        icon: Plus,
+        minAccess: 'EDIT',
+      },
       { href: '/dashboard/users', label: 'Users', icon: Users },
     ],
   },
@@ -50,7 +96,12 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard/school-plans', label: 'Plans', icon: Wallet },
       { href: '/dashboard/coupons', label: 'Coupons', icon: Ticket },
-      { href: '/dashboard/billing-settings', label: 'Settings', icon: Receipt },
+      {
+        href: '/dashboard/billing-settings',
+        label: 'Settings',
+        icon: Receipt,
+        minAccess: 'EDIT',
+      },
     ],
   },
   {
@@ -59,7 +110,51 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { href: '/dashboard/ai', label: 'Overview', icon: Sparkles, exact: true },
       { href: '/dashboard/ai/users', label: 'Users', icon: Users },
       { href: '/dashboard/ai/plans', label: 'Plans', icon: CreditCard },
-      { href: '/dashboard/ai/settings', label: 'Settings', icon: SlidersHorizontal },
+      {
+        href: '/dashboard/ai/settings',
+        label: 'Settings',
+        icon: SlidersHorizontal,
+        minAccess: 'EDIT',
+      },
+    ],
+  },
+  {
+    // Governs how *we* get into a customer's data, so the whole group is
+    // ADMIN — a VIEW user has no business reading which of our people can be
+    // sent into which school, let alone minting a password for one.
+    group: 'Platform access',
+    minAccess: 'ADMIN',
+    items: [
+      {
+        href: '/dashboard/platform-access',
+        label: 'Operators',
+        icon: UserCog,
+        exact: true,
+      },
+      {
+        href: '/dashboard/platform-access/tickets',
+        label: 'Login tickets',
+        icon: KeyRound,
+      },
+      {
+        href: '/dashboard/platform-access/activity',
+        label: 'Audit trail',
+        icon: ScrollText,
+      },
+    ],
+  },
+  {
+    group: 'Console',
+    items: [
+      {
+        href: '/dashboard/settings/users',
+        label: 'Hub users',
+        icon: ShieldCheck,
+        minAccess: 'ADMIN',
+      },
+      // Everyone has to be able to reach their own second factor — enrolment
+      // is mandatory, and login pushes unenrolled users straight here.
+      { href: '/dashboard/settings/security', label: 'Security', icon: KeyRound },
     ],
   },
 ];
@@ -68,12 +163,57 @@ function isActive(pathname: string, item: NavItem) {
   return item.exact ? pathname === item.href : pathname.startsWith(item.href);
 }
 
+function meets(level: HubAccessLevel, min: HubAccessLevel | undefined) {
+  return HUB_ACCESS_HIERARCHY[level] >= HUB_ACCESS_HIERARCHY[min ?? 'VIEW'];
+}
+
+/**
+ * The token lives in localStorage, so it is only readable in the browser.
+ * `null` means "not resolved yet" — on the server, and for the hydrating
+ * pass — and the nav holds off rather than flashing links the user may not
+ * be allowed to see.
+ */
+function useAccessLevel(): HubAccessLevel | null {
+  // A token minted before access levels existed reads as the floor; the
+  // next refresh mints one that carries the claim.
+  return useClientValue<HubAccessLevel | null>(
+    () => getAccessLevel() ?? 'VIEW',
+    null,
+  );
+}
+
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const level = useAccessLevel();
+
+  /**
+   * An un-enrolled account holds a stub token the server refuses everywhere
+   * but the enrolment endpoints, so every link but Security would bounce
+   * straight back. Showing one link is the honest shape of what it can do.
+   */
+  const setupOnly = useClientValue(() => isTotpSetupOnly(), false);
+
+  if (!level) return <nav className="flex-1 overflow-y-auto px-3 py-4" />;
+
+  const source = setupOnly
+    ? NAV.map((g) => ({
+        ...g,
+        minAccess: undefined,
+        items: g.items.filter(
+          (i) => i.href === '/dashboard/settings/security',
+        ),
+      }))
+    : NAV;
+
+  const groups = source
+    .filter((g) => meets(level, g.minAccess))
+    .map((g) => ({ ...g, items: g.items.filter((i) => meets(level, i.minAccess)) }))
+    // A group whose every link was filtered out is a heading over nothing.
+    .filter((g) => g.items.length > 0);
 
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4">
-      {NAV.map(({ group, items }) => (
+      {groups.map(({ group, items }) => (
         <div key={group} className="mb-5 last:mb-0">
           <p className="t-eyebrow mb-2 px-2.5">{group}</p>
           <ul className="space-y-0.5">
@@ -120,14 +260,30 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/** What the footer calls each level. */
+const ACCESS_LABEL: Record<HubAccessLevel, string> = {
+  VIEW: 'View only',
+  EDIT: 'Editor',
+  ADMIN: 'Administrator',
+};
+
 function Identity() {
-  const email = typeof window !== 'undefined' ? getUser()?.email : null;
+  const email = useClientValue<string | null>(
+    () => getUser()?.email ?? null,
+    null,
+  );
+  const level = useAccessLevel();
 
   return (
     <div className="border-t border-line px-3 py-3">
       <div className="px-2.5 pb-2.5">
         <p className="truncate text-[12px] text-chalk-soft">{email ?? '—'}</p>
-        <p className="t-eyebrow mt-0.5 text-[9px]">System admin</p>
+        {/* Was hard-coded "System admin" for everyone, which is now actively
+            misleading: `role` is SYSTEM_ADMIN for every hub user, and the
+            access level is the thing that differs. */}
+        <p className="t-eyebrow mt-0.5 text-[9px]">
+          {level ? ACCESS_LABEL[level] : '—'}
+        </p>
       </div>
       <button
         onClick={logout}
@@ -148,6 +304,10 @@ export default function ConsoleShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
+    // Every authenticated screen mounts through this shell, so the capability
+    // maps both backends publish are fetched here — once per sign-in, cached
+    // at module level — and `useCan()` works on any page inside it.
+    <CapabilityProvider>
     <div className="min-h-dvh lg:flex">
       {/* ── Mobile bar ───────────────────────────────────────────────── */}
       {/* --pwa-top-inset is 0 in a browser tab and the status-bar height only
@@ -202,8 +362,14 @@ export default function ConsoleShell({
       </aside>
 
       {/* ── Work surface ─────────────────────────────────────────────── */}
-      <main className="min-w-0 flex-1">{children}</main>
+      {/* Pull-to-refresh mounts here rather than in a route layout because
+          every screen renders its own shell — there is no /dashboard layout to
+          hang it from, and this is the one place all seventeen pass through. */}
+      <main className="min-w-0 flex-1">
+        <PullToRefresh>{children}</PullToRefresh>
+      </main>
     </div>
+    </CapabilityProvider>
   );
 }
 

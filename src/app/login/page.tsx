@@ -3,15 +3,28 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { ArrowRight, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Eye,
+  EyeOff,
+  Loader2,
+  ShieldCheck,
+} from 'lucide-react';
 import { api } from '@/lib/api';
+import { useClientValue } from '@/lib/client-value';
+import { hubAuth, type HubLoginResponse } from '@/lib/hub-users-api';
 import {
   getRefreshToken,
   getToken,
   getUser,
   isAccessTokenExpired,
+  setStubToken,
   setTokens,
+  TOTP_SETUP_PATH,
 } from '@/lib/auth';
+import { apiErrorMessage } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import ChalkToaster from '@/components/ui/ChalkToaster';
 import GridPattern from '@/components/ui/GridPattern';
@@ -28,59 +41,193 @@ const CAPABILITIES = [
   'Suspend or restore any tenant instantly',
 ];
 
+/**
+ * Sign-in is a small state machine, not one form:
+ *
+ *   login ─→ requireTotp ─→ totp ─┬─ recovery ─┐
+ *     │                           └────────────┤
+ *     ├─ requirePasswordChange ─→ change-password ─→ (re-login, which can
+ *     │                                              ask for a code again)
+ *     ├─ requireTotpSetup ─→ /dashboard/settings/security?setup=1
+ *     └─ done ─────────────────────────────────────→ /dashboard
+ *
+ * `/auth/login` cannot tell the client which of those it will be until the
+ * password has been checked, so every branch is decided by the response.
+ *
+ * Two orderings matter and are the server's, not ours:
+ *   - the second factor is demanded BEFORE the forced password change, so an
+ *     enrolled user whose password an admin has just reset passes through the
+ *     `totp` step, then `change-password`, then back through `totp` — with a
+ *     *fresh* code, because the first one was burned. Hence the reset of
+ *     `totpCode` on every entry to that step.
+ *   - enrolment is mandatory, so a completed login for an un-enrolled account
+ *     is not a session at all: it is a fifteen-minute stub good only for the
+ *     security page, and the user signs in again afterwards.
+ */
+type Step = 'login' | 'totp' | 'recovery' | 'change-password';
+
 export default function LoginPage() {
   const router = useRouter();
-  const [step, setStep] = useState<'login' | 'change-password'>('login');
+  const [step, setStep] = useState<Step>('login');
 
-  const [email, setEmail] = useState('');
+  // Accepts either the account's email or its mobile number.
+  const [identifier, setIdentifier] = useState('');
+  // Held only for as long as the sign-in takes: the TOTP and recovery steps
+  // re-post the same credentials with the second factor. Cleared the moment
+  // a session exists, and never written anywhere but component state.
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [totpCode, setTotpCode] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNew, setShowNew] = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(true);
+  /**
+   * Set once the forced password change has gone through, so the second trip
+   * to the `totp` step can explain why it is asking again.
+   */
+  const [passwordJustChanged, setPasswordJustChanged] = useState(false);
 
-  // If already logged in (and not in change-password mode), skip the form.
+  const [loading, setLoading] = useState(false);
+
+  /**
+   * Where an already-signed-in visitor belongs, or `null` when this really is
+   * a sign-in. Derived from localStorage during render rather than assigned by
+   * an effect: the effect version had to start at "redirecting" and switch
+   * itself off, which is a synchronous setState in an effect — the exact
+   * cascade `react-hooks/set-state-in-effect` exists to stop.
+   */
+  const redirectTo = useClientValue<string | null>(() => {
+    if (!getToken()) return null;
+    const user = getUser();
+    if (!user || user.isChangePasswordOnly) return null;
+    // An expired access token is fine as long as a refresh token can still
+    // revive it — ProtectedRoute does that before the dashboard renders.
+    const revivable = !isAccessTokenExpired() || !!getRefreshToken();
+    if (!revivable) return null;
+    // A setup-only stub is not a session; send it to the one screen it can
+    // drive rather than to a dashboard that would bounce it back.
+    return user.isTotpSetupOnly ? TOTP_SETUP_PATH : '/dashboard';
+  }, null);
+
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      const user = getUser();
-      // An expired access token is fine as long as a refresh token can still
-      // revive it — ProtectedRoute does that before the dashboard renders.
-      const revivable = !isAccessTokenExpired() || !!getRefreshToken();
-      if (user && !user.isChangePasswordOnly && revivable) {
-        router.replace('/dashboard');
-        return;
-      }
+    if (redirectTo) router.replace(redirectTo);
+  }, [redirectTo, router]);
+
+  /**
+   * The single place a `/auth/login` (or recovery) answer is turned into a
+   * next step, so every entry point — first form, TOTP form, and the
+   * re-login that follows a password change — branches identically.
+   */
+  function applyLoginResult(data: HubLoginResponse) {
+    // Password accepted, second factor still owed. No tokens came back.
+    if (data.requireTotp) {
+      // Always start this step empty. Arriving here a second time — after the
+      // forced password change — with the already-burned code still in the
+      // box would hand the user a guaranteed rejection.
+      setTotpCode('');
+      setStep('totp');
+      return;
     }
-    setRedirecting(false);
-  }, [router]);
+
+    // Both stub paths are deliberately short-lived, single-purpose and
+    // refresh-token-less, so they are stored through the setter that clears
+    // any handle a previous session left behind — see `setStubToken`.
+    if (data.requirePasswordChange || data.requireTotpSetup) {
+      setStubToken(data.access_token ?? '');
+    } else {
+      setTokens(data.access_token ?? '', data.refresh_token);
+    }
+
+    if (data.requirePasswordChange) {
+      toast.success('Welcome — please set a new password to continue');
+      setStep('change-password');
+      return;
+    }
+
+    // Nothing below re-posts the credentials, so they have no further use.
+    setPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setTotpCode('');
+    setRecoveryCode('');
+
+    if (data.requireTotpSetup) {
+      // Not a session: a fifteen-minute stub the server refuses everywhere
+      // but the enrolment endpoints. `replace`, not `push`, so Back cannot
+      // walk into a login form that would just redirect here again.
+      toast.success('Two-factor enrolment is required before the console opens');
+      router.replace(TOTP_SETUP_PATH);
+      return;
+    }
+
+    if (
+      typeof data.recoveryCodesRemaining === 'number' &&
+      data.recoveryCodesRemaining <= 3
+    ) {
+      toast(
+        `${data.recoveryCodesRemaining} recovery code${
+          data.recoveryCodesRemaining === 1 ? '' : 's'
+        } left — regenerate them from Console → Security.`,
+      );
+    }
+
+    router.push('/dashboard');
+  }
 
   async function handleLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const data = await api.post<{
-        access_token: string;
-        refresh_token?: string;
-        requirePasswordChange?: boolean;
-      }>('/auth/login', { email, password });
-
-      // No refresh_token on the requirePasswordChange path — that stub token
-      // is deliberately short-lived and single-purpose.
-      setTokens(data.access_token, data.refresh_token);
-      if (data.requirePasswordChange) {
-        toast.success('Welcome — please set a new password to continue');
-        setStep('change-password');
-      } else {
-        router.push('/dashboard');
-      }
+      applyLoginResult(await hubAuth.login({ identifier, password }));
     } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string }; message?: string };
-      toast.error(apiErr?.info?.message || apiErr?.message || 'Login failed');
+      toast.error(apiErrorMessage(err, 'Login failed'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Same credentials as the first attempt, now with the second factor. */
+  async function handleTotpSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(totpCode)) {
+      toast.error('Enter the six digits from your authenticator app');
+      return;
+    }
+    setLoading(true);
+    try {
+      applyLoginResult(
+        await hubAuth.login({ identifier, password, totpCode }),
+      );
+    } catch (err: unknown) {
+      setTotpCode('');
+      toast.error(apiErrorMessage(err, 'That code was not accepted'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRecoverySubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!recoveryCode.trim()) {
+      toast.error('Enter one of your recovery codes');
+      return;
+    }
+    setLoading(true);
+    try {
+      applyLoginResult(
+        await hubAuth.totpRecovery({
+          identifier,
+          password,
+          code: recoveryCode.trim(),
+        }),
+      );
+    } catch (err: unknown) {
+      setRecoveryCode('');
+      toast.error(apiErrorMessage(err, 'That recovery code was not accepted'));
     } finally {
       setLoading(false);
     }
@@ -99,27 +246,26 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await api.post('/auth/change-password', { password: newPassword });
-      const data = await api.post<{
-        access_token: string;
-        refresh_token?: string;
-      }>('/auth/login', {
-        email,
-        password: newPassword,
-      });
-      setTokens(data.access_token, data.refresh_token);
+      // The new password is now the credential the TOTP step would re-post,
+      // so it has to replace the old one before the re-login answers.
+      setPassword(newPassword);
+      setPasswordJustChanged(true);
       toast.success('Password updated');
-      router.push('/dashboard');
-    } catch (err: unknown) {
-      const apiErr = err as { info?: { message?: string }; message?: string };
-      toast.error(
-        apiErr?.info?.message || apiErr?.message || 'Failed to change password',
+      // This re-login is not guaranteed to hand back a session. An enrolled
+      // account is asked for a code again (a fresh one — the code that got us
+      // here is spent), and an un-enrolled one gets the setup stub. Both go
+      // through the same branching as any other answer.
+      applyLoginResult(
+        await hubAuth.login({ identifier, password: newPassword }),
       );
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Failed to change password'));
     } finally {
       setLoading(false);
     }
   }
 
-  if (redirecting) {
+  if (redirectTo) {
     return (
       <div className="grid min-h-dvh place-items-center bg-ink-900">
         <Loader2 className="h-5 w-5 animate-spin text-mint" />
@@ -132,7 +278,7 @@ export default function LoginPage() {
       <ChalkToaster position="top-center" />
 
       <GridPattern className="opacity-[0.55]" />
-      <Spotlight className="-top-40 -left-32 h-[34rem] w-[44rem]" />
+      <Spotlight className="-top-40 -left-32 h-136 w-176" />
 
       {/* ── Brand pane ──────────────────────────────────────────────── */}
       <div className="relative hidden w-[46%] flex-col justify-between border-r border-line px-12 py-11 lg:flex xl:w-[52%]">
@@ -234,7 +380,7 @@ export default function LoginPage() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-[400px]"
+          className="w-full max-w-100"
         >
           <div className="mb-8 flex items-center justify-center gap-2.5 lg:hidden">
             <Mark />
@@ -244,7 +390,7 @@ export default function LoginPage() {
           <div className="panel relative overflow-hidden p-7">
             <BorderBeam duration={9} />
 
-            {step === 'login' ? (
+            {step === 'login' && (
               <>
                 <p className="t-eyebrow">Sign in</p>
                 <h2 className="t-title mt-2.5 text-chalk">Welcome back</h2>
@@ -254,17 +400,17 @@ export default function LoginPage() {
 
                 <form onSubmit={handleLoginSubmit} className="mt-7 space-y-4">
                   <div>
-                    <label className="field-label" htmlFor="email">
-                      Email
+                    <label className="field-label" htmlFor="identifier">
+                      Email or mobile
                     </label>
                     <input
-                      id="email"
-                      type="email"
+                      id="identifier"
+                      type="text"
                       required
-                      autoComplete="email"
+                      autoComplete="username"
                       autoFocus
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
                       placeholder="superadmin@colegios.in"
                       className="input"
                     />
@@ -326,7 +472,170 @@ export default function LoginPage() {
                   account.
                 </p>
               </>
-            ) : (
+            )}
+
+            {step === 'totp' && (
+              <>
+                <p className="t-eyebrow">Two-factor</p>
+                <h2 className="t-title mt-2.5 text-chalk">
+                  Enter your code
+                </h2>
+                <p className="mt-1.5 text-[13px] text-chalk-dim">
+                  Open your authenticator app and type the six digits shown for{' '}
+                  <span className="t-mono text-chalk-soft">{identifier}</span>.
+                </p>
+
+                {passwordJustChanged && (
+                  <p className="mt-3 rounded-md border border-line bg-ink-850 px-3 py-2.5 text-[12px] leading-relaxed text-chalk-dim">
+                    Your password is saved. This asks for a code once more
+                    because each code works only once — wait for your app to
+                    roll to the next one if it has not already.
+                  </p>
+                )}
+
+                <form onSubmit={handleTotpSubmit} className="mt-7 space-y-4">
+                  <div>
+                    <label className="field-label" htmlFor="totp-code">
+                      Authentication code
+                    </label>
+                    <input
+                      id="totp-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      required
+                      autoFocus
+                      value={totpCode}
+                      onChange={(e) =>
+                        setTotpCode(e.target.value.replace(/\D/g, ''))
+                      }
+                      placeholder="000000"
+                      className="input t-mono text-center text-[20px] tracking-[0.4em]"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || totpCode.length !== 6}
+                    className="btn btn-primary btn-lg mt-1 w-full"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Verifying…
+                      </>
+                    ) : (
+                      <>
+                        Verify and sign in
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="mt-6 flex flex-col items-center gap-2 text-[12px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTotpCode('');
+                      setStep('recovery');
+                    }}
+                    className="cursor-pointer text-mint hover:underline"
+                  >
+                    Use a recovery code instead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTotpCode('');
+                      setPassword('');
+                      setPasswordJustChanged(false);
+                      setStep('login');
+                    }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 text-chalk-faint hover:text-chalk-soft"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    Back to sign in
+                  </button>
+                </div>
+              </>
+            )}
+
+            {step === 'recovery' && (
+              <>
+                <p className="t-eyebrow">Recovery</p>
+                <h2 className="t-title mt-2.5 text-chalk">
+                  Use a recovery code
+                </h2>
+                <p className="mt-1.5 text-[13px] text-chalk-dim">
+                  One of the codes issued when you enrolled. Each works once,
+                  and only alongside the password you just entered.
+                </p>
+
+                <form onSubmit={handleRecoverySubmit} className="mt-7 space-y-4">
+                  <div>
+                    <label className="field-label" htmlFor="recovery-code">
+                      Recovery code
+                    </label>
+                    <input
+                      id="recovery-code"
+                      type="text"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      required
+                      autoFocus
+                      value={recoveryCode}
+                      onChange={(e) =>
+                        setRecoveryCode(e.target.value.toUpperCase())
+                      }
+                      placeholder="ABCDE-FGHJK"
+                      className="input t-mono text-center text-[16px] tracking-[0.15em]"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || !recoveryCode.trim()}
+                    className="btn btn-primary btn-lg mt-1 w-full"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Checking…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4" />
+                        Sign in with recovery code
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryCode('');
+                      setStep('totp');
+                    }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-chalk-faint hover:text-chalk-soft"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    Back to the authenticator code
+                  </button>
+                </div>
+
+                <p className="mt-5 text-center text-[11px] text-chalk-faint">
+                  Out of codes? A platform administrator can reset your account.
+                </p>
+              </>
+            )}
+
+            {step === 'change-password' && (
               <>
                 <p className="t-eyebrow">First sign-in</p>
                 <h2 className="t-title mt-2.5 text-chalk">Set a password</h2>
