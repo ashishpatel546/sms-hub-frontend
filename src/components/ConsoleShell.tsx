@@ -30,6 +30,7 @@ import {
   type HubAccessLevel,
 } from '@/lib/auth';
 import { Mark } from '@/components/ui/Mark';
+import PullToRefresh from '@/components/ui/PullToRefresh';
 import { CapabilityProvider } from '@/lib/capabilities';
 import { useClientValue } from '@/lib/client-value';
 import { cn } from '@/lib/utils';
@@ -361,7 +362,12 @@ export default function ConsoleShell({
       </aside>
 
       {/* ── Work surface ─────────────────────────────────────────────── */}
-      <main className="min-w-0 flex-1">{children}</main>
+      {/* Pull-to-refresh mounts here rather than in a route layout because
+          every screen renders its own shell — there is no /dashboard layout to
+          hang it from, and this is the one place all seventeen pass through. */}
+      <main className="min-w-0 flex-1">
+        <PullToRefresh>{children}</PullToRefresh>
+      </main>
     </div>
     </CapabilityProvider>
   );

@@ -12,7 +12,16 @@
 //
 // Bump CACHE_NAME on every change to this file — the activate handler deletes
 // every cache that does not match, which is what evicts the previous version.
-const CACHE_NAME = 'colegios-hub-v2';
+//
+// v3 — the bootstrap bump, and the last one that should be needed for the sake
+// of shipping an update. Relying on a human to change this line is what let the
+// school app run a build that was eighteen deployments old: an installed PWA
+// only learns a new worker exists when these bytes differ, and they only differ
+// when somebody remembers. Detection now lives in `/version` +
+// `lib/app-version.ts`, which changes on every deployment on its own. This bump
+// exists to reach the consoles that are stale right now — changing these bytes
+// is the only signal their installed worker still listens to.
+const CACHE_NAME = 'colegios-hub-v3';
 
 // Static, versioned-by-content assets only. No HTML.
 const PRECACHE = [
