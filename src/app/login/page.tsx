@@ -306,7 +306,7 @@ export default function LoginPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.16, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="t-display mt-4 text-[52px] text-chalk xl:text-[60px]"
+            className="t-display mt-4 text-[clamp(38px,3.4vw+22px,60px)] text-chalk"
           >
             Every school
             <br />

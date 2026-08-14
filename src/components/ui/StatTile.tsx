@@ -46,7 +46,7 @@ export default function StatTile({
         aria-hidden
       />
       <p className="t-eyebrow pl-3">{label}</p>
-      <p className="t-num mt-1.5 pl-3 text-[26px] text-chalk">
+      <p className="t-num mt-1.5 pl-3 text-[clamp(22px,0.7vw+18px,28px)] text-chalk">
         {prefix}
         <NumberTicker value={value} delay={delay} />
         {suffix}

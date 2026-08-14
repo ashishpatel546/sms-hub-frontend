@@ -72,6 +72,34 @@
   --container-wide: 1240px;
   --container-reading: 880px;
 
+  /* ── Space: a 4px grid, with one half-step ─────────────────────────
+     Colour, radius, type and motion were all tokenised; padding was not,
+     so every component invented its own number (14/18, 9/12, 3/9, 7).
+     A console is allowed to be denser than an 8px grid — it is not allowed
+     to be arbitrary. Everything below snaps here; the half-step exists for
+     pills and hairline gaps where 4px is genuinely too much.
+
+     Tailwind emits only the theme variables it sees referenced, and it reads
+     this stylesheet, not the TSX. So a token is real once some rule below
+     uses it — reach for one of these from an inline `style={{}}` and you
+     will get an undefined variable in production but a working one in dev.
+     Keep the list to what the components layer actually spends. */
+  --space-half: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* ── Control heights ───────────────────────────────────────────────
+     On the same grid, and sized so the coarse-pointer hit area below can
+     reach 44px without the control itself having to look like a phone
+     button. */
+  --control-sm: 32px;
+  --control-md: 36px;
+  --control-lg: 44px;
+
   /* ── Radii: measured, not bubbly ───────────────────────────────────── */
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -232,9 +260,14 @@ option {
    headings read as engraved labels rather than web headlines.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* Display carries its own fluid size so a page heading is not a fixed 30px
+   on a 360px phone and on a 2560px monitor alike. Sites that want a
+   different range (the sign-in wordmark) override with their own clamp
+   rather than a fixed px. */
 .t-display {
   font-family: var(--font-display);
   font-weight: 600;
+  font-size: clamp(24px, 1.1vw + 18px, 32px);
   letter-spacing: -0.03em;
   line-height: 1.05;
 }
@@ -303,19 +336,20 @@ option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-line);
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────── */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 14px;
+  gap: var(--space-2);
+  height: var(--control-md);
+  padding: 0 var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-size: 13px;
@@ -376,15 +410,43 @@ option {
 }
 
 .btn-sm {
-  height: 28px;
-  padding: 0 10px;
+  height: var(--control-sm);
+  padding: 0 var(--space-3);
   font-size: 12px;
 }
 
 .btn-lg {
-  height: 40px;
-  padding: 0 20px;
+  height: var(--control-lg);
+  padding: 0 var(--space-5);
   font-size: 14px;
+}
+
+/* ── Touch ─────────────────────────────────────────────────────────
+   The console is installed as a PWA on phones, where a 32px button is
+   a 32px target however carefully it is aimed. Rather than inflate the
+   controls — which would cost the density the whole layout is built on —
+   coarse pointers get an invisible hit area grown to the 44px minimum.
+   `inset` is negative, so the box grows outward without moving anything;
+   it sits behind the label because the label needs the clicks too.
+   Buttons the layout has already absolutely positioned still work: the
+   utility wins over the `position: relative` above, and an absolutely
+   positioned element is its own containing block. */
+@media (pointer: coarse) {
+  /* `.switch` is absent here on purpose: its ::after is already the knob,
+     and it is `position: relative` already, so it takes ::before below. */
+  .btn::after,
+  .tab::before {
+    content: '';
+    position: absolute;
+    inset: calc((var(--control-lg) - 100%) / -2) calc(var(--space-half) * -3);
+  }
+
+  /* 36×20 knob track → a 44px-tall, 48px-wide target. */
+  .switch::before {
+    content: '';
+    position: absolute;
+    inset: -12px -6px;
+  }
 }
 
 /* ── Fields ────────────────────────────────────────────────────────── */
@@ -396,7 +458,7 @@ option {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-chalk-dim);
-  margin-bottom: 7px;
+  margin-bottom: var(--space-2);
 }
 
 .input {
@@ -404,7 +466,7 @@ option {
   background-color: var(--color-ink-850);
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-md);
-  padding: 9px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 13px;
   color: var(--color-chalk);
   transition:
@@ -452,8 +514,8 @@ select.input {
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border-radius: 999px;
   border: 1px solid;
   font-family: var(--font-mono);
@@ -509,7 +571,7 @@ select.input {
   z-index: 1;
   background-color: var(--color-ink-850);
   border-bottom: 1px solid var(--color-line);
-  padding: 9px 16px;
+  padding: var(--space-2) var(--space-4);
   text-align: left;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -521,7 +583,7 @@ select.input {
 }
 
 .tbl tbody td {
-  padding: 11px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid rgb(36 51 45 / 0.6);
   vertical-align: middle;
 }
@@ -542,7 +604,7 @@ select.input {
 /* ── Tabs ──────────────────────────────────────────────────────────── */
 .tab {
   position: relative;
-  padding: 10px 2px;
+  padding: var(--space-3) var(--space-half);
   font-size: 13px;
   font-weight: 500;
   color: var(--color-chalk-dim);

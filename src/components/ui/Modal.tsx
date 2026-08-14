@@ -31,16 +31,62 @@ export default function Modal({
 
   useEffect(() => {
     if (!open) return;
+
+    /**
+     * Tab used to walk straight out of the panel and into the page behind it,
+     * which for a screen-reader or keyboard user means the dialog is modal in
+     * appearance only. The list is recomputed on each Tab rather than cached
+     * on open, because every dialog in this console reveals and disables
+     * fields as you fill them in.
+     */
+    const focusables = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const items = focusables();
+      // Nothing focusable inside — hold the ring on the panel itself rather
+      // than letting the browser send focus to the document behind.
+      if (items.length === 0) {
+        e.preventDefault();
+        panelRef.current?.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey && (active === first || active === panelRef.current)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    // Whatever opened the dialog gets the ring back when it closes, so the
+    // keyboard user resumes where they left off instead of at the top.
+    const opener = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
+
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
+      if (opener?.isConnected) opener.focus();
     };
   }, [open, onClose]);
 

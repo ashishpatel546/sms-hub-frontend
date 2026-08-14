@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, X, Trash2, Layers, Percent, IndianRupee } from 'lucide-react';
+import { Plus, Trash2, Layers, Percent, IndianRupee } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import Modal from '@/components/ui/Modal';
 import NumberInput, { RupeeInput } from '@/components/ui/NumberInput';
 import PermissionButton from '@/components/ui/PermissionButton';
 import {
@@ -138,7 +139,7 @@ function PlanCard({
             value={form.description ?? ''}
             placeholder="Short description"
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="w-full text-xs text-chalk-dim mt-1 border-0 focus:outline-none bg-transparent"
+            className="w-full text-xs text-chalk-dim mt-1 border-0 border-b border-transparent hover:border-line-strong focus:border-mint-deep focus:outline-none bg-transparent"
           />
         </div>
         {!form.isActive && (
@@ -382,19 +383,30 @@ export default function SchoolPlansPage() {
         </div>
       )}
 
-      {showCreate && (
-        <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-chalk">New Plan</h2>
-              <button
-                onClick={() => setShowCreate(false)}
-                className="text-chalk-faint hover:text-chalk"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New Plan"
+        footer={
+          <>
+            <button
+              onClick={() => setShowCreate(false)}
+              className="btn btn-ghost"
+            >
+              Cancel
+            </button>
+            <PermissionButton
+              capability="plan.manage"
+              onClick={create}
+              disabled={creating}
+              className="btn btn-primary"
+            >
+              {creating ? 'Creating…' : 'Create Plan'}
+            </PermissionButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
             <div>
               <label className="field-label">
                 Name
@@ -449,25 +461,8 @@ export default function SchoolPlansPage() {
               at 0/5/10/20%. Both are editable on the plan card afterwards.
             </p>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="px-4 py-2 text-sm text-chalk-soft hover:text-chalk"
-              >
-                Cancel
-              </button>
-              <PermissionButton
-                capability="plan.manage"
-                onClick={create}
-                disabled={creating}
-                className="px-4 py-2 bg-mint text-ink-950 rounded-lg text-sm font-semibold disabled:bg-ink-600 hover:bg-mint-bright transition-colors"
-              >
-                {creating ? 'Creating…' : 'Create Plan'}
-              </PermissionButton>
-            </div>
-          </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

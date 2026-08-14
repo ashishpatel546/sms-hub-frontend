@@ -104,7 +104,7 @@ function PlatformTicketsContent() {
   const dialogOpen = opened ?? preselected !== '';
 
   return (
-    <div className="mx-auto max-w-wide px-5 py-6 lg:px-10 lg:py-10">
+    <div className="mx-auto max-w-wide px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
       <Reveal>
         <Link
           href="/dashboard/platform-access"

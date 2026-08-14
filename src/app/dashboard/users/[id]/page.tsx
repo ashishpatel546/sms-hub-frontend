@@ -225,7 +225,7 @@ function UserDetailContent() {
 
   if (loading || !detail) {
     return (
-      <div className="mx-auto max-w-wide px-5 py-6 lg:px-10 lg:py-10">
+      <div className="mx-auto max-w-wide px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
         <p className="text-[13px] text-chalk-dim">Loading…</p>
       </div>
     );
@@ -234,7 +234,7 @@ function UserDetailContent() {
   const u = detail.user;
 
   return (
-    <div className="mx-auto max-w-wide px-5 py-6 lg:px-10 lg:py-10">
+    <div className="mx-auto max-w-wide px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
       <Link
         href="/dashboard/users"
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-chalk-dim hover:text-chalk"
@@ -247,7 +247,7 @@ function UserDetailContent() {
       <div className="pb-6">
         <p className="t-eyebrow">User</p>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="t-display min-w-0 text-[30px] text-chalk">
+          <h1 className="t-display min-w-0 text-chalk">
             {u.firstName} {u.lastName}
           </h1>
           <Pill tone="iris">{u.role}</Pill>
