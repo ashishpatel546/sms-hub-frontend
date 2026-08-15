@@ -281,9 +281,7 @@ function Identity() {
         {/* Was hard-coded "System admin" for everyone, which is now actively
             misleading: `role` is SYSTEM_ADMIN for every hub user, and the
             access level is the thing that differs. */}
-        <p className="t-eyebrow mt-0.5 text-[9px]">
-          {level ? ACCESS_LABEL[level] : '—'}
-        </p>
+        <p className="t-eyebrow mt-0.5">{level ? ACCESS_LABEL[level] : '—'}</p>
       </div>
       <button
         onClick={logout}
@@ -312,8 +310,11 @@ export default function ConsoleShell({
       {/* ── Mobile bar ───────────────────────────────────────────────── */}
       {/* --pwa-top-inset is 0 in a browser tab and the status-bar height only
           when installed, where viewport-fit=cover puts us under it. */}
+      {/* bg-ink-900/95 made the blur a compositing layer that rendered
+          nothing — at 80% the slate actually reads as frosted over what
+          scrolls beneath it. */}
       <div
-        className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-ink-900/95 px-4 py-2.5 backdrop-blur lg:hidden"
+        className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-ink-900/80 px-4 py-2.5 backdrop-blur lg:hidden"
         style={{ paddingTop: 'calc(0.625rem + var(--pwa-top-inset))' }}
       >
         <Link href="/dashboard" className="flex items-center gap-2.5">
@@ -351,9 +352,7 @@ export default function ConsoleShell({
               <span className="t-section block text-chalk">
                 {process.env.NEXT_PUBLIC_APP_NAME || 'Colegios-Hub'}
               </span>
-              <span className="t-eyebrow mt-1 block text-[9px]">
-                Control plane
-              </span>
+              <span className="t-eyebrow mt-1 block">Control plane</span>
             </span>
           </Link>
         </div>
@@ -389,7 +388,7 @@ export function PageHeader({
     <div className="pb-6">
       {eyebrow && <p className="t-eyebrow">{eyebrow}</p>}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="t-display min-w-0 text-[30px] text-chalk">{title}</h1>
+        <h1 className="t-display min-w-0 text-chalk">{title}</h1>
         {actions && (
           <div className="flex shrink-0 items-center gap-2">{actions}</div>
         )}

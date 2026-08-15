@@ -33,10 +33,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     res = isLoginRequest
       ? await fetch(url, { ...options, headers })
       : await authFetch(url, options);
-  } catch {
+  } catch (e: unknown) {
+    // Re-throw AbortError so callers can distinguish a cancelled request from
+    // a real failure — same split `sms-api.ts` makes.
+    if ((e as { name?: string })?.name === 'AbortError') throw e;
+    // Name the service and the URL. A bare "Network error" reads identically
+    // whether hub-backend is down, the tunnel is 502-ing, or CORS is wrong —
+    // and a 502 from a proxy carries no CORS headers, so the browser reports
+    // it as a fetch failure rather than a status, which is exactly how a dead
+    // backend gets mistaken for a frontend bug.
     const error: any = new Error('Network error');
-    error.info = { message: 'Cannot reach server. Check your connection or CORS configuration.' };
+    error.info = {
+      message: `Cannot reach sms-hub-backend at ${API_BASE_URL}. Check that it is running, and NEXT_PUBLIC_HUB_API_URL and CORS.`,
+    };
     error.status = 0;
+    error.url = url;
     throw error;
   }
 

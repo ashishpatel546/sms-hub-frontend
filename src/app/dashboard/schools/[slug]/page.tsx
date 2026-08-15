@@ -470,7 +470,7 @@ export default function SchoolDetailPage() {
     <ProtectedRoute requireRole="SYSTEM_ADMIN">
       <ChalkToaster />
       <ConsoleShell>
-        <div className="mx-auto max-w-reading px-5 py-6 lg:px-10 lg:py-10">
+        <div className="mx-auto max-w-reading px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
           {/* ── Identity ────────────────────────────────────────────────
               One tenant, named once at the top with its status carried in
               the rail beside it — the same rail the directory row uses, so
@@ -500,6 +500,9 @@ export default function SchoolDetailPage() {
                   <img
                     src={url}
                     alt=""
+                    width={44}
+                    height={44}
+                    decoding="async"
                     className="h-11 w-11 shrink-0 rounded-md border border-line object-contain"
                   />
                 ) : (
@@ -509,7 +512,7 @@ export default function SchoolDetailPage() {
                 );
               })()}
               <div className="min-w-0">
-                <h1 className="t-display truncate text-[26px] text-chalk">
+                <h1 className="t-display truncate text-[clamp(21px,0.9vw+16px,28px)] text-chalk">
                   {school.name}
                 </h1>
                 <p className="t-mono mt-1 truncate text-chalk-faint">
@@ -743,6 +746,8 @@ export default function SchoolDetailPage() {
                     <img
                       src={url}
                       alt={`${school.name} logo`}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-contain"
                     />
                   ) : (

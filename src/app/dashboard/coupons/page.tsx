@@ -2,8 +2,9 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Plus, Search, Ticket, X } from 'lucide-react';
+import { Plus, Search, Ticket } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import Modal from '@/components/ui/Modal';
 import NumberInput from '@/components/ui/NumberInput';
 import PermissionButton from '@/components/ui/PermissionButton';
 import {
@@ -113,18 +114,28 @@ function CreateCouponModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-chalk">New Coupon</h2>
-          <button
-            onClick={onClose}
-            className="text-chalk-faint hover:text-chalk"
-          >
-            <X className="w-5 h-5" />
+    <Modal
+      open
+      onClose={onClose}
+      title="New Coupon"
+      size="md"
+      footer={
+        <>
+          <button onClick={onClose} className="btn btn-ghost">
+            Cancel
           </button>
-        </div>
-
+          <PermissionButton
+            capability="coupon.manage"
+            onClick={submit}
+            disabled={saving}
+            className="btn btn-primary"
+          >
+            {saving ? 'Creating…' : 'Create Coupon'}
+          </PermissionButton>
+        </>
+      }
+    >
+      <div className="space-y-4">
         <div>
           <label className="field-label">Code</label>
           <input
@@ -275,24 +286,8 @@ function CreateCouponModal({
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-chalk-soft hover:text-chalk"
-          >
-            Cancel
-          </button>
-          <PermissionButton
-            capability="coupon.manage"
-            onClick={submit}
-            disabled={saving}
-            className="px-4 py-2 bg-mint text-ink-950 rounded-lg text-sm font-semibold disabled:bg-ink-600 hover:bg-mint-bright"
-          >
-            {saving ? 'Creating…' : 'Create Coupon'}
-          </PermissionButton>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

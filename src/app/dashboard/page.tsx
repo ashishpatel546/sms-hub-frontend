@@ -138,7 +138,7 @@ function DashboardContent() {
   }, [schools]);
 
   return (
-    <div className="mx-auto max-w-wide px-5 py-6 lg:px-10 lg:py-10">
+    <div className="mx-auto max-w-wide px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
       <Reveal>
         <PageHeader
           eyebrow="Tenants"
@@ -244,6 +244,10 @@ function DashboardContent() {
                                 <img
                                   src={url}
                                   alt=""
+                                  width={32}
+                                  height={32}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="h-full w-full object-contain"
                                 />
                               ) : (

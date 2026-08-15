@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { aiAdmin, aiAdminPatch, type AiPlan, type LlmTierEntry, type LlmModelPrice } from '@/lib/ai-admin-api';
 import toast from 'react-hot-toast';
-import { Trash2, Plus, X, Cpu, RefreshCw, Settings2, IndianRupee, UserCheck } from 'lucide-react';
+import { Trash2, Plus, Cpu, RefreshCw, Settings2, IndianRupee, UserCheck } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
+import Modal from '@/components/ui/Modal';
 import NumberInput from '@/components/ui/NumberInput';
 import PermissionButton from '@/components/ui/PermissionButton';
 import { useCan, useCapabilities } from '@/lib/capabilities';
@@ -146,15 +147,32 @@ function ManageModelsModal({
   const filtered = (models ?? []).filter((m) => m.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-chalk">Manage Allowed Models</h2>
-          <button onClick={onClose} className="text-chalk-faint hover:text-chalk">
-            <X className="w-5 h-5" />
-          </button>
+    <Modal
+      open
+      onClose={onClose}
+      title="Manage Allowed Models"
+      size="md"
+      footer={
+        <div className="flex flex-1 items-center justify-between gap-3">
+          <span className="text-xs text-chalk-faint">
+            {selected.size} model{selected.size === 1 ? '' : 's'} allowed
+          </span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn btn-secondary">
+              Close
+            </button>
+            <button
+              onClick={save}
+              disabled={saving || !models}
+              className="btn btn-primary bg-iris hover:bg-iris-bright"
+            >
+              {saving ? 'Saving…' : 'Save allowed models'}
+            </button>
+          </div>
         </div>
-
+      }
+    >
+      <div className="space-y-4">
         <div className="flex gap-2">
           {PROVIDERS.map((p) => (
             <button
@@ -217,23 +235,8 @@ function ManageModelsModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-chalk-faint">{selected.size} model{selected.size === 1 ? '' : 's'} allowed</span>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 border border-line rounded-md text-sm text-chalk-soft hover:bg-ink-700">
-              Close
-            </button>
-            <button
-              onClick={save}
-              disabled={saving || !models}
-              className="px-4 py-2 bg-iris text-ink-950 rounded-md text-sm font-semibold hover:bg-iris-bright disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save allowed models'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -282,15 +285,25 @@ function AddTierModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-chalk">New Model Tier</h2>
-          <button onClick={onClose} className="text-chalk-faint hover:text-chalk">
-            <X className="w-5 h-5" />
+    <Modal
+      open
+      onClose={onClose}
+      title="New Model Tier"
+      footer={
+        <>
+          <button onClick={onClose} className="btn btn-secondary">
+            Cancel
           </button>
-        </div>
-
+          <button
+            onClick={create}
+            disabled={creating}
+            className="btn btn-primary bg-iris hover:bg-iris-bright"
+          >
+            {creating ? 'Creating…' : 'Create Tier'}
+          </button>
+        </>
+      }
+    >
         <div className="space-y-3">
           <div>
             <label className="field-label">
@@ -361,16 +374,7 @@ function AddTierModal({
           </div>
         </div>
 
-        <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 border border-line rounded-md py-2 text-sm text-chalk-soft hover:bg-ink-700">
-            Cancel
-          </button>
-          <button onClick={create} disabled={creating} className="flex-1 bg-iris text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-iris-bright disabled:opacity-50">
-            {creating ? 'Creating…' : 'Create Tier'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -904,25 +908,33 @@ function ModelTiersPanel({ onSaved }: { onSaved?: () => void }) {
         />
       )}
 
-      {confirmDeleteTier !== null && (
-        <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-bold text-chalk">Delete Tier</h2>
-            <p className="text-sm text-chalk-soft">
-              Are you sure you want to delete <strong>Tier {confirmDeleteTier}</strong>? Plans using this tier must be
-              moved to another tier first. This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteTier(null)} className="flex-1 border border-line rounded-md py-2 text-sm text-chalk-soft hover:bg-ink-700">
-                Cancel
-              </button>
-              <button onClick={deleteTier} disabled={deletingTier} className="flex-1 bg-rose text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-rose-bright disabled:opacity-50">
-                {deletingTier ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={confirmDeleteTier !== null}
+        onClose={() => setConfirmDeleteTier(null)}
+        title="Delete Tier"
+        footer={
+          <>
+            <button
+              onClick={() => setConfirmDeleteTier(null)}
+              className="btn btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={deleteTier}
+              disabled={deletingTier}
+              className="btn btn-danger"
+            >
+              {deletingTier ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-chalk-soft">
+          Are you sure you want to delete <strong>Tier {confirmDeleteTier}</strong>? Plans using this tier must be
+          moved to another tier first. This cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -1153,24 +1165,32 @@ function PlanCard({
       </PermissionButton>
 
       {/* Delete confirmation */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-bold text-chalk">Delete Plan</h2>
-            <p className="text-sm text-chalk-soft">
-              Are you sure you want to delete <strong>{plan.display_name}</strong>? This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(false)} className="flex-1 border border-line rounded-md py-2 text-sm text-chalk-soft hover:bg-ink-700">
-                Cancel
-              </button>
-              <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-rose text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-rose-bright disabled:opacity-50">
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete Plan"
+        footer={
+          <>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="btn btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="btn btn-danger"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-chalk-soft">
+          Are you sure you want to delete <strong>{plan.display_name}</strong>? This cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -1306,16 +1326,29 @@ export default function AiPlansPage() {
       )}
 
       {/* Create Plan Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-ink-800 rounded-lg shadow-none w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-chalk">New Plan</h2>
-              <button onClick={() => setShowCreate(false)} className="text-chalk-faint hover:text-chalk">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New Plan"
+        footer={
+          <>
+            <button
+              onClick={() => setShowCreate(false)}
+              className="btn btn-secondary"
+            >
+              Cancel
+            </button>
+            <PermissionButton
+              capability="ai.plan.manage"
+              onClick={handleCreate}
+              disabled={creating}
+              className="btn btn-primary bg-iris hover:bg-iris-bright"
+            >
+              {creating ? 'Creating…' : 'Create Plan'}
+            </PermissionButton>
+          </>
+        }
+      >
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1438,17 +1471,7 @@ export default function AiPlansPage() {
               </label>
             </div>
 
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowCreate(false)} className="flex-1 border border-line rounded-md py-2 text-sm text-chalk-soft hover:bg-ink-700">
-                Cancel
-              </button>
-              <PermissionButton capability="ai.plan.manage" onClick={handleCreate} disabled={creating} className="flex-1 bg-iris text-ink-950 rounded-md py-2 text-sm font-semibold hover:bg-iris-bright disabled:opacity-50">
-                {creating ? 'Creating…' : 'Create Plan'}
-              </PermissionButton>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

@@ -45,7 +45,7 @@ export function Wordmark({
       <Mark />
       <span className="leading-none">
         <span className="t-section block text-chalk">{appName}</span>
-        <span className="t-eyebrow mt-1 block text-[9px]">
+        <span className="t-eyebrow mt-1 block">
           {section ?? 'Control plane'}
         </span>
       </span>

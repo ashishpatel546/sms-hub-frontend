@@ -182,7 +182,7 @@ export default function NewSchoolPage() {
     <ProtectedRoute requireRole="SYSTEM_ADMIN">
       <ChalkToaster />
       <ConsoleShell>
-        <div className="mx-auto max-w-reading px-5 py-6 lg:px-10 lg:py-10">
+        <div className="mx-auto max-w-reading px-5 py-6 sm:px-6 lg:px-10 lg:py-10">
           <Reveal>
             <Link
               href="/dashboard"
