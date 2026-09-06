@@ -188,10 +188,19 @@ async function fetchCapabilities(): Promise<CapabilityState> {
 
 /** Fetch for the signed-in user, deduplicating concurrent and repeat calls. */
 function ensureLoaded(): void {
-  const sub = getUser()?.sub;
+  const user = getUser();
   // Not signed in — ProtectedRoute is already redirecting; stay closed.
-  if (sub == null) return;
-  const key = String(sub);
+  if (user?.sub == null) return;
+  // A TOTP-setup-only or change-password-only token is mid-login, not a
+  // session — both backends' `JwtAuthGuard` refuse `/capabilities` on it by
+  // design (see the comment on `AuthController.capabilities`), same as every
+  // other route neither stub is allowlisted for. Fetching anyway just logs a
+  // guaranteed 403 and pops two "could not load permissions" toasts over a
+  // legitimate enrolment screen. `ConsoleShell` — and this provider with it —
+  // mounts on that screen too, so this has to be checked here rather than by
+  // not rendering `CapabilityProvider` there.
+  if (user.isTotpSetupOnly || user.isChangePasswordOnly) return;
+  const key = String(user.sub);
 
   if (key === currentKey) {
     if (state.ready || inflight) return; // answered, or being answered

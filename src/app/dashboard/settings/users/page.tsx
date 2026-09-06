@@ -399,7 +399,12 @@ function HubUsersContent() {
                           <Pill tone={u.totpEnabled ? 'mint' : 'slate'}>
                             {u.totpEnabled ? 'Enrolled' : 'Not enrolled'}
                           </Pill>
-                          {!u.totpEnabled && (
+                          {!u.totpEnabled && u.totpBypassedAt && (
+                            <span className="mt-1 block">
+                              <Pill tone="amber">Skipped 2FA</Pill>
+                            </span>
+                          )}
+                          {!u.totpEnabled && !u.totpBypassedAt && (
                             <span className="mt-1 block text-[11px] text-chalk-faint">
                               Enrols at next sign-in
                             </span>
@@ -452,10 +457,20 @@ function HubUsersContent() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Pill tone={u.totpEnabled ? 'mint' : 'slate'}>
+                      <Pill
+                        tone={
+                          u.totpEnabled
+                            ? 'mint'
+                            : u.totpBypassedAt
+                              ? 'amber'
+                              : 'slate'
+                        }
+                      >
                         {u.totpEnabled
                           ? '2FA enrolled'
-                          : '2FA enrols at next sign-in'}
+                          : u.totpBypassedAt
+                            ? '2FA skipped'
+                            : '2FA enrols at next sign-in'}
                       </Pill>
                       {u.isFirstLogin && <Pill tone="amber">Password pending</Pill>}
                       <span className="text-[12px] text-chalk-dim">

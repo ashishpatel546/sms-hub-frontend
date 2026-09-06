@@ -14,6 +14,7 @@ import {
   LogIn,
   RefreshCw,
   ShieldCheck,
+  ShieldOff,
   Smartphone,
 } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -21,7 +22,7 @@ import ConsoleShell, { PageHeader } from '@/components/ConsoleShell';
 import ChalkToaster from '@/components/ui/ChalkToaster';
 import { Reveal } from '@/components/ui/Reveal';
 import { useClientValue } from '@/lib/client-value';
-import { isTotpSetupOnly, logout } from '@/lib/auth';
+import { isTotpSetupOnly, logout, setTokens } from '@/lib/auth';
 import { hubAuth, type TotpSetupResponse } from '@/lib/hub-users-api';
 import { apiErrorMessage } from '@/lib/utils';
 
@@ -65,6 +66,7 @@ function SecurityContent() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [code, setCode] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [skipping, setSkipping] = useState(false);
 
   // `?setup=1` is how the login page says "you were sent here, you can't
   // skip it". Read off `location` rather than `useSearchParams` so the page
@@ -123,6 +125,29 @@ function SecurityContent() {
   function retry() {
     setPhase({ kind: 'loading' });
     requestSetup();
+  }
+
+  /**
+   * The explicit "not now" escape hatch, only reachable on the setup-only
+   * stub — the server refuses `/auth/totp/skip` on anything else. Upgrades
+   * the stub into a real session in place, so this is the one path off this
+   * page that does NOT end at sign-in again.
+   */
+  async function skipSetup() {
+    setSkipping(true);
+    try {
+      const data = await hubAuth.totpSkip();
+      setTokens(data.access_token ?? '', data.refresh_token);
+      toast.success(
+        'Continuing without two-factor — set it up anytime from Console → Security.',
+      );
+      router.replace('/dashboard');
+    } catch (err: unknown) {
+      toast.error(
+        apiErrorMessage(err, 'Could not continue without two-factor'),
+      );
+      setSkipping(false);
+    }
   }
 
   async function confirm(e: React.FormEvent) {
@@ -230,6 +255,12 @@ function SecurityContent() {
             onCode={setCode}
             confirming={confirming}
             onConfirm={confirm}
+            // Only the setup-only stub can call `/auth/totp/skip` — an
+            // already-signed-in operator opening this page to enrol
+            // voluntarily has nothing to "skip", they can just navigate away.
+            canSkip={setupOnly}
+            skipping={skipping}
+            onSkip={() => void skipSetup()}
           />
         )}
 
@@ -437,13 +468,22 @@ function SetupPanel({
   onCode,
   confirming,
   onConfirm,
+  canSkip,
+  skipping,
+  onSkip,
 }: {
   data: TotpSetupResponse;
   code: string;
   onCode: (value: string) => void;
   confirming: boolean;
   onConfirm: (e: React.FormEvent) => void;
+  /** Whether `/auth/totp/skip` is reachable on the token in hand. */
+  canSkip: boolean;
+  skipping: boolean;
+  onSkip: () => void;
 }) {
+  const [confirmingSkip, setConfirmingSkip] = useState(false);
+
   async function copySecret() {
     try {
       await navigator.clipboard.writeText(data.secret);
@@ -546,6 +586,61 @@ function SetupPanel({
               changes nothing.
             </p>
           </form>
+
+          {canSkip && (
+            <div className="mt-6 border-t border-line pt-5">
+              {!confirmingSkip ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingSkip(true)}
+                  className="text-[13px] text-chalk-faint underline decoration-dotted underline-offset-4 hover:text-chalk-soft"
+                >
+                  Not ready yet? Continue without two-factor for now
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-lg border border-amber-edge bg-amber-tint p-4">
+                  <p className="flex gap-2.5 text-[13px] leading-relaxed text-chalk-soft">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
+                    <span>
+                      Your account will open with password only until you
+                      enrol — anyone who learns your password gets in too. An
+                      administrator can see this and revoke it from{' '}
+                      <span className="text-chalk">Hub users</span> at any
+                      time.
+                    </span>
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={onSkip}
+                      disabled={skipping}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      {skipping ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Continuing…
+                        </>
+                      ) : (
+                        <>
+                          <ShieldOff className="h-3.5 w-3.5" strokeWidth={2} />
+                          Yes, continue without it
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingSkip(false)}
+                      disabled={skipping}
+                      className="btn btn-ghost btn-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>
