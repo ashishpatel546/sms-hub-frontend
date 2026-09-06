@@ -25,6 +25,13 @@ export interface HubConsoleUser {
   /** True until the user has replaced the bootstrap password. */
   isFirstLogin: boolean;
   totpEnabled: boolean;
+  /**
+   * Set once, when the account chose "continue without two-factor" past its
+   * enrolment grace period. `null` for an enrolled account, or one that
+   * never reached that point. Cleared by `resetTotp`, which is how an admin
+   * revokes a self-granted bypass.
+   */
+  totpBypassedAt: string | null;
   lastLoginAt: string | null;
   createdById: number | null;
   createdAt: string;
@@ -153,12 +160,19 @@ export const hubUsers = {
  *                             stub that only unlocks /auth/change-password,
  *                             and there is no refresh token by design.
  *   `requireTotpSetup`      — enrolment is mandatory and this account has
- *                             none. `access_token` is a 15-minute stub the
- *                             server refuses everywhere except
- *                             /auth/totp/status|setup|enable and /auth/me,
- *                             and there is no refresh token. Enrolling does
- *                             NOT upgrade it — the user signs in again.
- *   none of them            — a real session.
+ *                             none, AND its grace period has expired.
+ *                             `access_token` is a 15-minute stub the server
+ *                             refuses everywhere except
+ *                             /auth/totp/status|setup|enable|skip and
+ *                             /auth/me, and there is no refresh token.
+ *                             Enrolling does NOT upgrade it — the user signs
+ *                             in again. `totp/skip` does upgrade it, into a
+ *                             real session.
+ *   none of them            — a real session. `totpSetupRecommended` is set
+ *                             when that session still has no second factor
+ *                             (grace period, or a prior `totp/skip`) — the
+ *                             console shows a dismiss-free dashboard banner
+ *                             for as long as that stays true.
  */
 export interface HubLoginResponse {
   requireTotp?: boolean;
@@ -168,6 +182,8 @@ export interface HubLoginResponse {
    * session, so it can be read as a plain boolean either way.
    */
   requireTotpSetup?: boolean;
+  /** Only on a real session with no second factor — see the class doc. */
+  totpSetupRecommended?: boolean;
   access_token?: string;
   refresh_token?: string;
   role?: HubRole;
@@ -216,6 +232,13 @@ export const hubAuth = {
   /** Confirms the pairing. The recovery codes it returns are shown once. */
   totpEnable: (code: string) =>
     api.post<{ recoveryCodes: string[] }>('/auth/totp/enable', { code }),
+  /**
+   * "Continue without two-factor for now" — only reachable from the
+   * setup-only stub, which is only ever handed out once the grace period has
+   * expired. Upgrades the stub into a real session in place, so the caller
+   * can go straight to the dashboard without signing in again.
+   */
+  totpSkip: () => api.post<HubLoginResponse>('/auth/totp/skip'),
   /**
    * Issues a fresh set of recovery codes to an already-enrolled user and
    * invalidates the old set. Shown once, exactly like enrolment.

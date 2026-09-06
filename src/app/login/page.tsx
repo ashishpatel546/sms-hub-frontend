@@ -173,6 +173,11 @@ export default function LoginPage() {
           data.recoveryCodesRemaining === 1 ? '' : 's'
         } left — regenerate them from Console → Security.`,
       );
+    } else if (data.totpSetupRecommended) {
+      // Grace period, or a prior `totp/skip` — the dashboard banner
+      // (`useTotpSetupRecommended`) carries the persistent version of this;
+      // this toast just makes the first landing on it legible.
+      toast('Set up two-factor authentication when you get a chance.');
     }
 
     router.push('/dashboard');

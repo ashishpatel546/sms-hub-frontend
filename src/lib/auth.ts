@@ -66,6 +66,15 @@ export interface HubUser {
    * `/auth/me`, so it is a session in name only — see `isTotpSetupOnly()`.
    */
   isTotpSetupOnly?: boolean;
+  /**
+   * Whether this account has completed TOTP enrolment. `false` on a real
+   * session means the login went through the grace period or an explicit
+   * `totp/skip` — see `useTotpSetupRecommended()` for the dashboard nag this
+   * drives. Absent on tokens minted before this claim existed, which reads
+   * as `false` and is harmless: worst case, an already-enrolled account on a
+   * stale token sees one extra banner until its next sign-in.
+   */
+  totpEnabled?: boolean;
   /** Unix seconds. Absent on hand-made tokens; treated as "expired" if so. */
   exp?: number;
 }
@@ -153,6 +162,16 @@ export function isSystemAdmin(): boolean {
  */
 export function isTotpSetupOnly(): boolean {
   return getUser()?.isTotpSetupOnly === true;
+}
+
+/**
+ * True on a real session (not the setup-only stub) that went through the
+ * console without ever enrolling in TOTP — the grace period, or an explicit
+ * `totp/skip`. Drives the dashboard's persistent "set up 2FA" banner.
+ */
+export function isTotpSetupRecommended(): boolean {
+  const user = getUser();
+  return !!user && !user.isTotpSetupOnly && user.totpEnabled === false;
 }
 
 /**
