@@ -61,9 +61,10 @@ export interface HubUser {
   isChangePasswordOnly?: boolean;
   /**
    * Set on the 15-minute, refresh-token-less session `/auth/login` hands an
-   * account that has never enrolled in TOTP. `JwtAuthGuard` on the hub rejects
-   * such a token everywhere except `/auth/totp/status|setup|enable` and
-   * `/auth/me`, so it is a session in name only — see `isTotpSetupOnly()`.
+   * account an admin has required to use two-factor but which has not
+   * enrolled yet. `JwtAuthGuard` on the hub rejects such a token everywhere
+   * except `/auth/totp/status|setup|enable` and `/auth/me`, so it is a session
+   * in name only — see `isTotpSetupOnly()`.
    */
   isTotpSetupOnly?: boolean;
   /** Unix seconds. Absent on hand-made tokens; treated as "expired" if so. */
@@ -95,8 +96,8 @@ export function setTokens(accessToken: string, refreshToken?: string): void {
  * Stores one of the two single-purpose stub tokens — "must change password"
  * and "must enrol in two-factor" — and **drops any refresh token with it**.
  *
- * Neither stub comes with a refresh token, by design. Leaving an older one in
- * place beside it would be worse than useless: `authFetch` refreshes the
+ * Neither stub comes with a refresh token, by design. Leaving an older one
+ * in place beside it would be worse than useless: `authFetch` refreshes the
  * moment the fifteen minutes are up, and a leftover handle from an earlier
  * session would be traded for a full one — walking straight past the gate the
  * stub exists to impose, on a different account than the one signing in.

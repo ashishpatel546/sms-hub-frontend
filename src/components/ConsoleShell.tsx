@@ -152,8 +152,7 @@ const NAV: NavGroup[] = [
         icon: ShieldCheck,
         minAccess: 'ADMIN',
       },
-      // Everyone has to be able to reach their own second factor — enrolment
-      // is mandatory, and login pushes unenrolled users straight here.
+      // Every access level can reach their own password and second factor.
       { href: '/dashboard/settings/security', label: 'Security', icon: KeyRound },
     ],
   },
@@ -187,9 +186,10 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const level = useAccessLevel();
 
   /**
-   * An un-enrolled account holds a stub token the server refuses everywhere
-   * but the enrolment endpoints, so every link but Security would bounce
-   * straight back. Showing one link is the honest shape of what it can do.
+   * An account an admin requires to use two-factor holds a stub token until it
+   * enrols; the server refuses it everywhere but the enrolment endpoints, so
+   * every link but Security would bounce straight back. Showing one link is
+   * the honest shape of what it can do.
    */
   const setupOnly = useClientValue(() => isTotpSetupOnly(), false);
 
