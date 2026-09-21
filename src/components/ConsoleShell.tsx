@@ -13,7 +13,6 @@ import {
   Receipt,
   ScrollText,
   ShieldCheck,
-  ShieldOff,
   SlidersHorizontal,
   Sparkles,
   Ticket,
@@ -26,7 +25,6 @@ import {
   getAccessLevel,
   getUser,
   isTotpSetupOnly,
-  isTotpSetupRecommended,
   logout,
   HUB_ACCESS_HIERARCHY,
   type HubAccessLevel,
@@ -154,8 +152,7 @@ const NAV: NavGroup[] = [
         icon: ShieldCheck,
         minAccess: 'ADMIN',
       },
-      // Everyone has to be able to reach their own second factor — enrolment
-      // is mandatory, and login pushes unenrolled users straight here.
+      // Every access level can reach their own password and second factor.
       { href: '/dashboard/settings/security', label: 'Security', icon: KeyRound },
     ],
   },
@@ -189,9 +186,10 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const level = useAccessLevel();
 
   /**
-   * An un-enrolled account holds a stub token the server refuses everywhere
-   * but the enrolment endpoints, so every link but Security would bounce
-   * straight back. Showing one link is the honest shape of what it can do.
+   * An account an admin requires to use two-factor holds a stub token until it
+   * enrols; the server refuses it everywhere but the enrolment endpoints, so
+   * every link but Security would bounce straight back. Showing one link is
+   * the honest shape of what it can do.
    */
   const setupOnly = useClientValue(() => isTotpSetupOnly(), false);
 
@@ -296,35 +294,6 @@ function Identity() {
   );
 }
 
-/**
- * Persistent nag for a real session that went through the console without
- * ever enrolling in TOTP — the grace period, or a prior `totp/skip`. Not
- * dismissible: it reappears on every screen (each mounts its own
- * `ConsoleShell`) for exactly as long as `totpEnabled` stays `false` on the
- * token, which is the honest amount of nagging for an account currently
- * reachable on password alone.
- */
-function TotpSetupBanner() {
-  const recommended = useClientValue(() => isTotpSetupRecommended(), false);
-  if (!recommended) return null;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-amber-edge bg-amber-tint px-4 py-2.5 text-[13px] text-chalk-soft sm:px-6">
-      <p className="flex items-center gap-2">
-        <ShieldOff className="h-4 w-4 shrink-0 text-amber" strokeWidth={1.75} />
-        Two-factor authentication is not set up on your account — anyone who
-        learns your password can sign in.
-      </p>
-      <Link
-        href="/dashboard/settings/security"
-        className="shrink-0 text-chalk underline decoration-dotted underline-offset-4 hover:no-underline"
-      >
-        Set it up now
-      </Link>
-    </div>
-  );
-}
-
 export default function ConsoleShell({
   children,
 }: {
@@ -396,7 +365,6 @@ export default function ConsoleShell({
           every screen renders its own shell — there is no /dashboard layout to
           hang it from, and this is the one place all seventeen pass through. */}
       <main className="min-w-0 flex-1">
-        <TotpSetupBanner />
         <PullToRefresh>{children}</PullToRefresh>
       </main>
     </div>

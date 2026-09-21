@@ -61,20 +61,12 @@ export interface HubUser {
   isChangePasswordOnly?: boolean;
   /**
    * Set on the 15-minute, refresh-token-less session `/auth/login` hands an
-   * account that has never enrolled in TOTP. `JwtAuthGuard` on the hub rejects
-   * such a token everywhere except `/auth/totp/status|setup|enable` and
-   * `/auth/me`, so it is a session in name only — see `isTotpSetupOnly()`.
+   * account an admin has required to use two-factor but which has not
+   * enrolled yet. `JwtAuthGuard` on the hub rejects such a token everywhere
+   * except `/auth/totp/status|setup|enable` and `/auth/me`, so it is a session
+   * in name only — see `isTotpSetupOnly()`.
    */
   isTotpSetupOnly?: boolean;
-  /**
-   * Whether this account has completed TOTP enrolment. `false` on a real
-   * session means the login went through the grace period or an explicit
-   * `totp/skip` — see `useTotpSetupRecommended()` for the dashboard nag this
-   * drives. Absent on tokens minted before this claim existed, which reads
-   * as `false` and is harmless: worst case, an already-enrolled account on a
-   * stale token sees one extra banner until its next sign-in.
-   */
-  totpEnabled?: boolean;
   /** Unix seconds. Absent on hand-made tokens; treated as "expired" if so. */
   exp?: number;
 }
@@ -104,8 +96,8 @@ export function setTokens(accessToken: string, refreshToken?: string): void {
  * Stores one of the two single-purpose stub tokens — "must change password"
  * and "must enrol in two-factor" — and **drops any refresh token with it**.
  *
- * Neither stub comes with a refresh token, by design. Leaving an older one in
- * place beside it would be worse than useless: `authFetch` refreshes the
+ * Neither stub comes with a refresh token, by design. Leaving an older one
+ * in place beside it would be worse than useless: `authFetch` refreshes the
  * moment the fifteen minutes are up, and a leftover handle from an earlier
  * session would be traded for a full one — walking straight past the gate the
  * stub exists to impose, on a different account than the one signing in.
@@ -162,16 +154,6 @@ export function isSystemAdmin(): boolean {
  */
 export function isTotpSetupOnly(): boolean {
   return getUser()?.isTotpSetupOnly === true;
-}
-
-/**
- * True on a real session (not the setup-only stub) that went through the
- * console without ever enrolling in TOTP — the grace period, or an explicit
- * `totp/skip`. Drives the dashboard's persistent "set up 2FA" banner.
- */
-export function isTotpSetupRecommended(): boolean {
-  const user = getUser();
-  return !!user && !user.isTotpSetupOnly && user.totpEnabled === false;
 }
 
 /**

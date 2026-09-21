@@ -54,15 +54,19 @@ const CAPABILITIES = [
  * `/auth/login` cannot tell the client which of those it will be until the
  * password has been checked, so every branch is decided by the response.
  *
- * Two orderings matter and are the server's, not ours:
+ * Two-factor is optional by default, so `requireTotp` appears only for an account
+ * that has turned it on from Security, and `requireTotpSetup` only for one an
+ * admin has flagged as required and that has not enrolled yet. Two orderings
+ * matter and are the server's, not ours:
  *   - the second factor is demanded BEFORE the forced password change, so an
  *     enrolled user whose password an admin has just reset passes through the
  *     `totp` step, then `change-password`, then back through `totp` — with a
  *     *fresh* code, because the first one was burned. Hence the reset of
  *     `totpCode` on every entry to that step.
- *   - enrolment is mandatory, so a completed login for an un-enrolled account
- *     is not a session at all: it is a fifteen-minute stub good only for the
- *     security page, and the user signs in again afterwards.
+ *   - enrolment is only forced by an admin flag, and then a completed login
+ *     for an un-enrolled account is not a session at all: it is a
+ *     fifteen-minute stub good only for the security page, and the user signs
+ *     in again afterwards.
  */
 type Step = 'login' | 'totp' | 'recovery' | 'change-password';
 
@@ -173,11 +177,6 @@ export default function LoginPage() {
           data.recoveryCodesRemaining === 1 ? '' : 's'
         } left — regenerate them from Console → Security.`,
       );
-    } else if (data.totpSetupRecommended) {
-      // Grace period, or a prior `totp/skip` — the dashboard banner
-      // (`useTotpSetupRecommended`) carries the persistent version of this;
-      // this toast just makes the first landing on it legible.
-      toast('Set up two-factor authentication when you get a chance.');
     }
 
     router.push('/dashboard');
@@ -256,10 +255,10 @@ export default function LoginPage() {
       setPassword(newPassword);
       setPasswordJustChanged(true);
       toast.success('Password updated');
-      // This re-login is not guaranteed to hand back a session. An enrolled
+      // This re-login is not guaranteed to hand back a session: an enrolled
       // account is asked for a code again (a fresh one — the code that got us
-      // here is spent), and an un-enrolled one gets the setup stub. Both go
-      // through the same branching as any other answer.
+      // here is spent), and a required-but-un-enrolled one gets the setup
+      // stub. Both go through the same branching as any other answer.
       applyLoginResult(
         await hubAuth.login({ identifier, password: newPassword }),
       );

@@ -26,10 +26,14 @@ export interface HubConsoleUser {
   isFirstLogin: boolean;
   totpEnabled: boolean;
   /**
-   * Set once, when the account chose "continue without two-factor" past its
-   * enrolment grace period. `null` for an enrolled account, or one that
-   * never reached that point. Cleared by `resetTotp`, which is how an admin
-   * revokes a self-granted bypass.
+   * An admin requires two-factor for this account. `false` = optional, the
+   * user's own choice (the default). Set with `hubUsers.setTotpRequired`.
+   */
+  totpRequired: boolean;
+  /**
+   * Legacy: stamped by the retired "continue without two-factor" escape hatch
+   * from when enrolment was mandatory. Two-factor is optional now, so nothing
+   * writes it any more; the API still returns it.
    */
   totpBypassedAt: string | null;
   lastLoginAt: string | null;
@@ -71,6 +75,8 @@ export interface CreateHubUserPayload {
   accessLevel?: HubAccessLevel;
   /** Omitted means `'temporary'` — the server defaults the same way. */
   passwordMode?: PasswordMode;
+  /** Force two-factor from first sign-in. Omitted means optional. */
+  totpRequired?: boolean;
 }
 
 /** What `create` answers with: the account, plus how it was provisioned. */
@@ -133,8 +139,10 @@ export const hubUsers = {
     ),
   /**
    * Clears enrolment — secret, recovery codes, replay watermark — and revokes
-   * every session the user holds, so their next sign-in lands on the
-   * setup-only token and re-enrols. Leaves the password alone; that is
+   * every session the user holds. A user with two-factor required must
+   * re-enrol at their next sign-in; an optional one signs in with the
+   * password only until they choose to enrol again. Leaves the password
+   * alone; that is
    * `resetPassword`'s job. Idempotent: resetting an un-enrolled user is a
    * no-op that still succeeds.
    */
@@ -142,6 +150,14 @@ export const hubUsers = {
     api.post<{ success: true; totpEnabled: false }>(
       `/hub-users/${id}/reset-totp`,
     ),
+  /**
+   * Require (or stop requiring) two-factor for one user. ON: a user who has
+   * not enrolled is sent through enrolment at their next sign-in and cannot
+   * turn it off afterwards; an enrolled user notices nothing. OFF: back to
+   * optional, existing enrolment kept.
+   */
+  setTotpRequired: (id: number, required: boolean) =>
+    api.patch<HubConsoleUser>(`/hub-users/${id}/totp-required`, { required }),
   remove: (id: number) => api.delete<{ success: true }>(`/hub-users/${id}`),
 };
 
@@ -151,39 +167,31 @@ export const hubUsers = {
  * Every shape `/auth/login` can answer with, as one union-ish record.
  *
  * Four outcomes share the endpoint, and they are decided in this order:
- *   `requireTotp`           — password accepted, second factor still owed.
- *                             Carries NO tokens. Runs *ahead* of the
- *                             first-login branch, so an enrolled user whose
- *                             password an admin has reset is asked for a code
- *                             before they are asked for a new password.
+ *   `requireTotp`           — password accepted and the account HAS enrolled
+ *                             in two-factor, so a code is still owed. Carries
+ *                             NO tokens. Runs *ahead* of the first-login
+ *                             branch, so an enrolled user whose password an
+ *                             admin has reset is asked for a code before they
+ *                             are asked for a new password.
  *   `requirePasswordChange` — first sign-in. `access_token` is a 15-minute
  *                             stub that only unlocks /auth/change-password,
  *                             and there is no refresh token by design.
- *   `requireTotpSetup`      — enrolment is mandatory and this account has
- *                             none, AND its grace period has expired.
- *                             `access_token` is a 15-minute stub the server
- *                             refuses everywhere except
- *                             /auth/totp/status|setup|enable|skip and
+ *   `requireTotpSetup`      — an admin requires two-factor for this account
+ *                             and it has not enrolled. `access_token` is a
+ *                             15-minute stub the server refuses everywhere
+ *                             except /auth/totp/status|setup|enable and
  *                             /auth/me, and there is no refresh token.
  *                             Enrolling does NOT upgrade it — the user signs
- *                             in again. `totp/skip` does upgrade it, into a
- *                             real session.
- *   none of them            — a real session. `totpSetupRecommended` is set
- *                             when that session still has no second factor
- *                             (grace period, or a prior `totp/skip`) — the
- *                             console shows a dismiss-free dashboard banner
- *                             for as long as that stays true.
+ *                             in again.
+ *   none of them            — a real session. Two-factor is optional by
+ *                             default, so an un-enrolled account normally
+ *                             lands here.
  */
 export interface HubLoginResponse {
   requireTotp?: boolean;
   requirePasswordChange?: boolean;
-  /**
-   * `true` with a setup-only `access_token`; explicitly `false` on a real
-   * session, so it can be read as a plain boolean either way.
-   */
+  /** `true` with a setup-only `access_token`; absent on a real session. */
   requireTotpSetup?: boolean;
-  /** Only on a real session with no second factor — see the class doc. */
-  totpSetupRecommended?: boolean;
   access_token?: string;
   refresh_token?: string;
   role?: HubRole;
@@ -205,6 +213,8 @@ export interface TotpStatusResponse {
   enabled: boolean;
   /** A secret exists but was never confirmed with a code. */
   pending: boolean;
+  /** An admin requires two-factor for this account — it cannot be turned off. */
+  required: boolean;
   recoveryCodesRemaining: number;
 }
 
@@ -215,8 +225,16 @@ export const hubAuth = {
     password: string;
     totpCode?: string;
   }) => api.post<HubLoginResponse>('/auth/login', body),
-  changePassword: (password: string) =>
-    api.post<unknown>('/auth/change-password', { password }),
+  /**
+   * Self-service change for a signed-in user. Revokes every session and
+   * answers with a fresh token pair for this one — store it with `setTokens`
+   * or the next request will 401 on the revoked refresh token.
+   */
+  changePassword: (currentPassword: string, password: string) =>
+    api.post<{ success: true; access_token: string; refresh_token: string }>(
+      '/auth/change-password',
+      { currentPassword, password },
+    ),
   /**
    * Read-only enrolment state. Use this to decide what the security page
    * should render — never `totpSetup`, which mutates.
@@ -233,12 +251,16 @@ export const hubAuth = {
   totpEnable: (code: string) =>
     api.post<{ recoveryCodes: string[] }>('/auth/totp/enable', { code }),
   /**
-   * "Continue without two-factor for now" — only reachable from the
-   * setup-only stub, which is only ever handed out once the grace period has
-   * expired. Upgrades the stub into a real session in place, so the caller
-   * can go straight to the dashboard without signing in again.
+   * Turns two-factor off. Needs the account password AND a current
+   * authenticator code — a session alone must not be able to strip it. The
+   * server clears the secret and every recovery code. Refused (400) when an
+   * admin requires two-factor for the account.
    */
-  totpSkip: () => api.post<HubLoginResponse>('/auth/totp/skip'),
+  totpDisable: (password: string, code: string) =>
+    api.post<{ success: true; totpEnabled: false }>('/auth/totp/disable', {
+      password,
+      code,
+    }),
   /**
    * Issues a fresh set of recovery codes to an already-enrolled user and
    * invalidates the old set. Shown once, exactly like enrolment.

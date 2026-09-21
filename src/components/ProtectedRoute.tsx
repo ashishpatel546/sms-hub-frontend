@@ -158,9 +158,9 @@ function TotpSetupRequired() {
         <p className="t-eyebrow mt-4">Two-factor required</p>
         <h1 className="t-title mt-2 text-chalk">Finish enrolment first</h1>
         <p className="mt-2.5 text-[13px] leading-relaxed text-chalk-dim">
-          You are signed in far enough to set up an authenticator app and no
-          further. The rest of the console stays closed until two-factor is on —
-          pair a device, save the recovery codes, then sign in again.
+          An administrator requires two-factor for your account. You are signed
+          in far enough to set up an authenticator app and no further — pair a
+          device, save the recovery codes, then sign in again.
         </p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Link href={TOTP_SETUP_PATH} className="btn btn-primary">

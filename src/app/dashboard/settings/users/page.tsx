@@ -8,7 +8,9 @@ import {
   Plus,
   Power,
   ShieldCheck,
+  ShieldMinus,
   ShieldOff,
+  ShieldPlus,
   Trash2,
   UserPlus,
 } from 'lucide-react';
@@ -222,15 +224,27 @@ function HubUsersContent() {
             their paired authenticator and every recovery code they hold. Their
             password is untouched.
           </p>
-          <p className="mt-2">
-            They are signed out everywhere immediately, and their next sign-in
-            lands on enrolment: they must pair an app again before the console
-            opens for them.
-          </p>
+          {user.totpRequired ? (
+            <p className="mt-2">
+              They are signed out everywhere immediately. Two-factor is
+              required for this account, so they must enrol a new authenticator
+              at their next sign-in before the console opens.
+            </p>
+          ) : (
+            <p className="mt-2">
+              They are signed out everywhere immediately, and their next
+              sign-in asks for the password only. Two-factor is optional for
+              this account, so they can turn it on again from Security whenever
+              they like.
+            </p>
+          )}
           {isSelf && (
             <p className="mt-2 text-amber">
               This is your own account — you will be signed out of this console
-              the moment it goes through, and will re-enrol on your way back in.
+              the moment it goes through
+              {user.totpRequired
+                ? ', and must enrol a new authenticator when you sign back in.'
+                : ', and can turn two-factor on again from Security after you sign back in.'}
             </p>
           )}
         </>
@@ -241,6 +255,60 @@ function HubUsersContent() {
           () => hubUsers.resetTotp(user.id),
           'Two-factor cleared and sessions revoked',
           'Could not reset two-factor',
+        ),
+    });
+  }
+
+  /**
+   * Flips the per-user "two-factor is required" flag. Optional is the default
+   * and the user's own choice; required is an admin decision, which is why it
+   * sits behind a confirmation that spells out what each direction does.
+   */
+  function askToggleTotpRequired(user: HubConsoleUser) {
+    const requiring = !user.totpRequired;
+    const who = user.name || user.email;
+    setConfirmation({
+      title: requiring ? 'Require two-factor' : 'Make two-factor optional',
+      confirmLabel: requiring ? 'Require two-factor' : 'Make optional',
+      body: requiring ? (
+        <>
+          <p>
+            <span className="text-chalk">{who}</span> will have to use
+            two-factor, and can no longer turn it off themselves.
+          </p>
+          {user.totpEnabled ? (
+            <p className="mt-2">
+              They are already enrolled, so nothing changes for them today.
+            </p>
+          ) : (
+            <p className="mt-2">
+              They have not enrolled yet. Their open sessions end when their
+              access token next refreshes, and at their next sign-in the console
+              stays closed until they pair an authenticator app.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p>
+            Two-factor becomes optional for{' '}
+            <span className="text-chalk">{who}</span> again — their own choice.
+          </p>
+          <p className="mt-2">
+            {user.totpEnabled
+              ? 'Their existing enrolment stays as it is, and they can now turn it off from Security.'
+              : 'They are not enrolled, so sign-in stays password only until they choose to turn it on.'}
+          </p>
+        </>
+      ),
+      run: () =>
+        mutate(
+          user.id,
+          () => hubUsers.setTotpRequired(user.id, requiring),
+          requiring
+            ? `Two-factor is now required for ${user.email}`
+            : `Two-factor is now optional for ${user.email}`,
+          'Could not change the two-factor requirement',
         ),
     });
   }
@@ -306,10 +374,14 @@ function HubUsersContent() {
             it at first sign-in. The deployment-wide default password is offered
             as the other choice, but it is the same value on every account: for
             as long as it stands, anyone who knows it can sign in as that user
-            and enrol their own authenticator. Two-factor is mandatory — an account with none can do nothing but
-            enrol — and resetting it is the way back for somebody who has lost
-            both their phone and their recovery codes; it clears the second
-            factor only, never the password. The last active ADMIN cannot be
+            and enrol their own authenticator. Two-factor is optional by default —
+            each user turns it on or off themselves from Security — unless you
+            mark an account <span className="text-chalk">2FA required</span>:
+            that user must enrol at their next sign-in and cannot turn it off.
+            Resetting two-factor is the way back for somebody who has lost both
+            their phone and their recovery codes; it clears the second factor
+            only, never the password, and a required user re-enrols at their
+            next sign-in. The last active ADMIN cannot be
             demoted, deactivated or deleted, and nobody can change their own
             access level — the guardrails live in the API, not here.
           </p>
@@ -355,7 +427,7 @@ function HubUsersContent() {
                       <th>Status</th>
                       <th>Two-factor</th>
                       <th>Last login</th>
-                      <th className="w-40 text-right">Actions</th>
+                      <th className="w-48 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -396,19 +468,7 @@ function HubUsersContent() {
                           )}
                         </td>
                         <td>
-                          <Pill tone={u.totpEnabled ? 'mint' : 'slate'}>
-                            {u.totpEnabled ? 'Enrolled' : 'Not enrolled'}
-                          </Pill>
-                          {!u.totpEnabled && u.totpBypassedAt && (
-                            <span className="mt-1 block">
-                              <Pill tone="amber">Skipped 2FA</Pill>
-                            </span>
-                          )}
-                          {!u.totpEnabled && !u.totpBypassedAt && (
-                            <span className="mt-1 block text-[11px] text-chalk-faint">
-                              Enrols at next sign-in
-                            </span>
-                          )}
+                          <TotpTags user={u} />
                         </td>
                         <td className="text-[12px] whitespace-nowrap text-chalk-soft">
                           {formatWhen(u.lastLoginAt)}
@@ -422,6 +482,9 @@ function HubUsersContent() {
                             onEdit={() => setEditing(u)}
                             onReset={() => setResetting(u)}
                             onResetTotp={() => askResetTotp(u)}
+                            onToggleTotpRequired={() =>
+                              askToggleTotpRequired(u)
+                            }
                             onToggle={() => askToggle(u)}
                             onDelete={() => askDelete(u)}
                           />
@@ -457,21 +520,7 @@ function HubUsersContent() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Pill
-                        tone={
-                          u.totpEnabled
-                            ? 'mint'
-                            : u.totpBypassedAt
-                              ? 'amber'
-                              : 'slate'
-                        }
-                      >
-                        {u.totpEnabled
-                          ? '2FA enrolled'
-                          : u.totpBypassedAt
-                            ? '2FA skipped'
-                            : '2FA enrols at next sign-in'}
-                      </Pill>
+                      <TotpTags user={u} inline />
                       {u.isFirstLogin && <Pill tone="amber">Password pending</Pill>}
                       <span className="text-[12px] text-chalk-dim">
                         Last login {formatWhen(u.lastLoginAt)}
@@ -494,6 +543,7 @@ function HubUsersContent() {
                         onEdit={() => setEditing(u)}
                         onReset={() => setResetting(u)}
                         onResetTotp={() => askResetTotp(u)}
+                        onToggleTotpRequired={() => askToggleTotpRequired(u)}
                         onToggle={() => askToggle(u)}
                         onDelete={() => askDelete(u)}
                       />
@@ -604,6 +654,39 @@ function AccessSelect({
   );
 }
 
+/**
+ * The two things worth knowing about a user's second factor, kept apart
+ * because they answer different questions: whether it is *required* is the
+ * admin's policy for the account, whether it is *enabled* is whether the user
+ * has actually enrolled. An account can be required-but-not-enabled (they are
+ * held at enrolment until they do) or optional-and-enabled (their own choice).
+ */
+function TotpTags({
+  user,
+  inline = false,
+}: {
+  user: HubConsoleUser;
+  /** Flow with the neighbouring pills instead of stacking in a table cell. */
+  inline?: boolean;
+}) {
+  const tags = (
+    <>
+      <Pill tone={user.totpRequired ? 'sky' : 'slate'}>
+        {user.totpRequired ? '2FA required' : '2FA optional'}
+      </Pill>
+      <Pill tone={user.totpEnabled ? 'mint' : 'slate'}>
+        {user.totpEnabled ? 'Enabled' : 'Not enabled'}
+      </Pill>
+    </>
+  );
+
+  return inline ? (
+    tags
+  ) : (
+    <span className="flex flex-col items-start gap-1">{tags}</span>
+  );
+}
+
 function RowActions({
   user,
   isSelf,
@@ -612,6 +695,7 @@ function RowActions({
   onEdit,
   onReset,
   onResetTotp,
+  onToggleTotpRequired,
   onToggle,
   onDelete,
 }: {
@@ -623,6 +707,7 @@ function RowActions({
   onEdit: () => void;
   onReset: () => void;
   onResetTotp: () => void;
+  onToggleTotpRequired: () => void;
   onToggle: () => void;
   onDelete: () => void;
 }) {
@@ -663,6 +748,28 @@ function RowActions({
         danger
       >
         <ShieldOff className="h-3.75 w-3.75" strokeWidth={1.75} />
+      </IconButton>
+      <IconButton
+        label={
+          user.totpRequired
+            ? 'Make two-factor optional'
+            : 'Require two-factor'
+        }
+        onClick={onToggleTotpRequired}
+        disabled={busy || !canManage}
+        title={
+          !canManage
+            ? deniedNote
+            : user.totpRequired
+              ? 'Two-factor is required — make it optional again'
+              : 'Two-factor is optional — require it for this user'
+        }
+      >
+        {user.totpRequired ? (
+          <ShieldMinus className="h-3.75 w-3.75" strokeWidth={1.75} />
+        ) : (
+          <ShieldPlus className="h-3.75 w-3.75" strokeWidth={1.75} />
+        )}
       </IconButton>
       <IconButton
         label={user.isActive ? 'Deactivate account' : 'Reactivate account'}
@@ -886,6 +993,8 @@ function InviteDialog({
   const [accessLevel, setAccessLevel] = useState<HubAccessLevel>('VIEW');
   // The safe choice is the one you get by leaving this alone too.
   const [passwordMode, setPasswordMode] = useState<PasswordMode>('temporary');
+  // Optional unless the admin says otherwise, matching the server default.
+  const [totpRequired, setTotpRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
    * The created account and — for a temporary password — its plaintext, for
@@ -908,6 +1017,7 @@ function InviteDialog({
         mobile: mobile.trim() || null,
         accessLevel,
         passwordMode,
+        totpRequired,
       });
       setCreated(user);
       toast.success(
@@ -1064,6 +1174,24 @@ function InviteDialog({
           disabled={saving}
           onChange={setPasswordMode}
         />
+
+        <label className="flex cursor-pointer items-start gap-2.5 text-[13px] text-chalk-soft">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={totpRequired}
+            disabled={saving}
+            onChange={(e) => setTotpRequired(e.target.checked)}
+          />
+          <span>
+            Require two-factor
+            <span className="mt-0.5 block text-[12px] text-chalk-dim">
+              Off by default: two-factor is optional and their own choice. Tick
+              this to make them pair an authenticator app right after they
+              choose their password, and to stop them turning it off.
+            </span>
+          </span>
+        </label>
 
         {/* Lets Enter submit the form without a second visible button. */}
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
