@@ -1444,6 +1444,26 @@ function monthQuery(month?: string) {
   return month ? `?month=${encodeURIComponent(month)}` : '';
 }
 
+/** A chat model the assistant may run on (curated in sms-backend `agent-models.ts`). */
+export interface AgentModelOption {
+  id: string;
+  label: string;
+  reasoningEffort: 'none' | 'minimal' | null;
+  inputUsdPerM: number;
+  outputUsdPerM: number;
+  /** Tasks passed in the latest evaluation, e.g. "30/30". */
+  evaluation: string;
+  note: string;
+}
+
+export interface AgentSettings {
+  /** null: the agent service's own default (`AGENT_MODEL`). */
+  model: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  models: AgentModelOption[];
+}
+
 export const adminAgent = {
   overview: (month?: string, signal?: AbortSignal) =>
     smsApi.get<AgentUsageOverview>(`/admin/agent-usage${monthQuery(month)}`, signal),
@@ -1452,6 +1472,11 @@ export const adminAgent = {
       `/admin/schools/${encodeURIComponent(slug)}/agent-usage${monthQuery(month)}`,
       signal,
     ),
+  settings: (signal?: AbortSignal) =>
+    smsApi.get<AgentSettings>('/admin/agent-settings', signal),
+  /** Needs the `agent.settings` capability. null restores the service default. */
+  updateSettings: (model: string | null) =>
+    smsApi.patch<AgentSettings>('/admin/agent-settings', { model }),
   /** Needs the `agent.credits` capability. Answers the month's new quota. */
   updateCredits: (slug: string, body: UpdateAgentCreditsPayload) =>
     smsApi.patch<AgentQuota>(

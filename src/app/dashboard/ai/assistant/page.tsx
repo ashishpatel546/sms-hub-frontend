@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import { PageHeader } from '@/components/ConsoleShell';
 import Readout from '@/components/ui/Readout';
 import { Reveal } from '@/components/ui/Reveal';
+import AgentModelPanel from '@/components/agent/AgentModelPanel';
 import { UsageMeter, UsageStatePill } from '@/components/agent/UsageBits';
 import {
   adminAgent,
@@ -281,6 +282,10 @@ function AssistantUsageContent() {
                 },
               ]}
             />
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <AgentModelPanel />
           </Reveal>
 
           <Reveal delay={0.1}>

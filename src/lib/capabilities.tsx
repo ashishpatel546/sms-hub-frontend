@@ -96,6 +96,7 @@ const CAPABILITY_LEVELS: Record<string, HubAccessLevel> = {
   'billing.addon': 'EDIT',
   'billing.voidInvoice': 'EDIT',
   'agent.credits': 'EDIT',
+  'agent.settings': 'ADMIN',
   'platformAccess.manage': 'ADMIN',
   'platformActivity.read': 'ADMIN',
   'platformTicket.issue': 'EDIT',
