@@ -1456,12 +1456,55 @@ export interface AgentModelOption {
   note: string;
 }
 
-export interface AgentSettings {
-  /** null: the agent service's own default (`AGENT_MODEL`). */
-  model: string | null;
+/** A voice input or output option: off, the device's own speech, or a model. */
+export interface AgentVoiceOption {
+  id: string;
+  label: string;
+  kind: 'off' | 'device' | 'server';
+  price: string;
+  note: string;
+}
+
+export interface AgentSettingsCatalog {
+  chatModels: AgentModelOption[];
+  voiceInputs: AgentVoiceOption[];
+  voiceOutputs: AgentVoiceOption[];
+  ttsVoices: string[];
+  sessionIdleMinutes: { min: number; max: number };
+  historyMaxTurns: { min: number; max: number };
+}
+
+export interface AgentSettingValues {
+  chatModel: string;
+  /** 'off' | 'device' | a speech-to-text model id. */
+  voiceInput: string;
+  /** 'off' | 'device' | a text-to-speech model id. */
+  voiceOutput: string;
+  ttsVoice: string;
+  sessionIdleMinutes: number;
+  historyMaxTurns: number;
+}
+
+/** A school's own choices; null = use the platform default. */
+export type AgentSettingOverrides = {
+  [K in keyof AgentSettingValues]: AgentSettingValues[K] | null;
+};
+
+export interface PlatformAgentSettings {
+  defaults: AgentSettingValues;
   updatedAt: string | null;
   updatedBy: string | null;
-  models: AgentModelOption[];
+  catalog: AgentSettingsCatalog;
+}
+
+export interface SchoolAgentSettings {
+  overrides: AgentSettingOverrides;
+  defaults: AgentSettingValues;
+  /** What the school's assistant runs with now. */
+  effective: AgentSettingValues;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  catalog: AgentSettingsCatalog;
 }
 
 export const adminAgent = {
@@ -1472,11 +1515,23 @@ export const adminAgent = {
       `/admin/schools/${encodeURIComponent(slug)}/agent-usage${monthQuery(month)}`,
       signal,
     ),
+  /** Defaults for every school, and the options the hub offers. */
   settings: (signal?: AbortSignal) =>
-    smsApi.get<AgentSettings>('/admin/agent-settings', signal),
-  /** Needs the `agent.settings` capability. null restores the service default. */
-  updateSettings: (model: string | null) =>
-    smsApi.patch<AgentSettings>('/admin/agent-settings', { model }),
+    smsApi.get<PlatformAgentSettings>('/admin/agent-settings', signal),
+  /** Needs `agent.settings`. Fields left out stay as they are. */
+  updateSettings: (body: Partial<AgentSettingValues>) =>
+    smsApi.patch<PlatformAgentSettings>('/admin/agent-settings', body),
+  schoolSettings: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SchoolAgentSettings>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-settings`,
+      signal,
+    ),
+  /** Needs `agent.settings`. null returns a field to the platform default. */
+  updateSchoolSettings: (slug: string, body: Partial<AgentSettingOverrides>) =>
+    smsApi.patch<SchoolAgentSettings>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-settings`,
+      body,
+    ),
   /** Needs the `agent.credits` capability. Answers the month's new quota. */
   updateCredits: (slug: string, body: UpdateAgentCreditsPayload) =>
     smsApi.patch<AgentQuota>(

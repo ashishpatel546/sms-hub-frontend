@@ -12,10 +12,11 @@ import { ArrowLeft, Building2 } from 'lucide-react';
 import { PageHeader } from '@/components/ConsoleShell';
 import { Reveal } from '@/components/ui/Reveal';
 import AgentSchoolUsagePanel from '@/components/agent/AgentSchoolUsage';
+import AgentSettingsForm from '@/components/agent/AgentSettingsForm';
 import { currentUsageMonth, isMonthKey } from '@/lib/agent-usage';
 
 /**
- * One school's AI Assistant usage and credits. Reached from a row on
+ * One school's AI Assistant usage, credits and settings. Reached from a row on
  * `/dashboard/ai/assistant` and from the AI Assistant panel on the school's
  * own page. The month rides in `?month=` so the back link lands on the same
  * month the list was showing.
@@ -64,7 +65,8 @@ function Content() {
           description={
             <>
               <span className="t-mono">{slug}</span> · who used the assistant,
-              on what, and how many credits the school has left.
+              on what, how many credits the school has left, and how its
+              assistant is set up.
             </>
           }
           actions={
@@ -98,6 +100,12 @@ function Content() {
         month={month}
         onSchoolName={setName}
       />
+
+      <Reveal delay={0.1}>
+        <div className="mt-4">
+          <AgentSettingsForm key={slug} slug={slug} />
+        </div>
+      </Reveal>
     </div>
   );
 }
