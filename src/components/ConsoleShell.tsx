@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
+  Bot,
   Building2,
   CreditCard,
   KeyRound,
@@ -110,6 +111,14 @@ const NAV: NavGroup[] = [
       { href: '/dashboard/ai', label: 'Overview', icon: Sparkles, exact: true },
       { href: '/dashboard/ai/users', label: 'Users', icon: Users },
       { href: '/dashboard/ai/plans', label: 'Plans', icon: CreditCard },
+      // The in-portal AI Assistant (sms-backend), metered per school in
+      // credits — a different product from school-ai above, but the same
+      // question an operator comes to this group with: who is using AI.
+      {
+        href: '/dashboard/ai/assistant',
+        label: 'Assistant usage',
+        icon: Bot,
+      },
       {
         href: '/dashboard/ai/settings',
         label: 'Settings',

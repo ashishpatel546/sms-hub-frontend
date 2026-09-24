@@ -16,7 +16,8 @@ import { getUser, type HubAccessLevel } from './auth';
  *
  * The two name sets are dot-namespaced and disjoint by construction —
  * sms-backend owns `school.* / user.* / plan.* / billingSlab.* / coupon.* /
- * billing.* / platformAccess.* / platformActivity.* / platformTicket.*`,
+ * billing.* / agent.* / platformAccess.* / platformActivity.* /
+ * platformTicket.*`,
  * the hub owns `hubUser.* / ai.* / account.*` — so they merge into one flat
  * lookup with no prefixing.
  *
@@ -94,6 +95,7 @@ const CAPABILITY_LEVELS: Record<string, HubAccessLevel> = {
   'billing.credit': 'EDIT',
   'billing.addon': 'EDIT',
   'billing.voidInvoice': 'EDIT',
+  'agent.credits': 'EDIT',
   'platformAccess.manage': 'ADMIN',
   'platformActivity.read': 'ADMIN',
   'platformTicket.issue': 'EDIT',

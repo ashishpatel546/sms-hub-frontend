@@ -1368,6 +1368,98 @@ export const platformActivity = {
     ),
 };
 
+// ── AI Assistant: credits and usage ─────────────────────────────────────
+// Shapes mirror `AgentUsageService` in sms-backend
+// (src/modules/agent/agent-usage.service.ts). Months are IST `YYYY-MM`, the
+// same key the backend meters under.
+
+export type AgentUsageKind = 'API' | 'LLM' | 'STT' | 'TTS';
+
+/** A school's credit position for one month. */
+export interface AgentQuota {
+  month: string;
+  /** Monthly allowance plus this month's bonus. */
+  limit: number;
+  used: number;
+  /** Never negative — an overspend reads as 0 here; compare used to limit. */
+  remaining: number;
+  /** The effective allowance (the platform default when none is set). */
+  allowance: number;
+  bonus: number;
+}
+
+export interface AgentUsageSchoolRow {
+  schoolId: number;
+  slug: string;
+  name: string;
+  allowance: number;
+  /** True when the school has no allowance of its own. */
+  allowanceIsDefault: boolean;
+  bonus: number;
+  limit: number;
+  used: number;
+  remaining: number;
+  apiCalls: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  sttSeconds: number;
+  ttsChars: number;
+}
+
+export interface AgentUsageOverview {
+  month: string;
+  /** The platform default monthly allowance (`AGENT_DEFAULT_MONTHLY_CREDITS`). */
+  defaultAllowance: number;
+  schools: AgentUsageSchoolRow[];
+}
+
+export interface AgentUsageTotals {
+  apiCalls: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  sttSeconds: number;
+  ttsChars: number;
+}
+
+export interface AgentSchoolUsage {
+  quota: AgentQuota;
+  totals: AgentUsageTotals;
+  /** Top 10 users by credits. `name` is empty for a user no longer found. */
+  byUser: { userId: number; name: string | null; credits: number; events: number }[];
+  /** Top 15 tools / models by credits. */
+  byTool: { kind: AgentUsageKind; name: string | null; credits: number; calls: number }[];
+  /** Only days with usage are present, ascending. `day` is `YYYY-MM-DD` (IST). */
+  byDay: { day: string; credits: number }[];
+}
+
+export interface UpdateAgentCreditsPayload {
+  /** null restores the platform default; 0 disables the assistant. */
+  monthlyCredits?: number | null;
+  /** One-off credits for `month`; negative removes (floored at 0 bonus). */
+  bonusCredits?: number;
+  month?: string;
+}
+
+function monthQuery(month?: string) {
+  return month ? `?month=${encodeURIComponent(month)}` : '';
+}
+
+export const adminAgent = {
+  overview: (month?: string, signal?: AbortSignal) =>
+    smsApi.get<AgentUsageOverview>(`/admin/agent-usage${monthQuery(month)}`, signal),
+  school: (slug: string, month?: string, signal?: AbortSignal) =>
+    smsApi.get<AgentSchoolUsage>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-usage${monthQuery(month)}`,
+      signal,
+    ),
+  /** Needs the `agent.credits` capability. Answers the month's new quota. */
+  updateCredits: (slug: string, body: UpdateAgentCreditsPayload) =>
+    smsApi.patch<AgentQuota>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-credits`,
+      body,
+    ),
+};
+
 /** ₹ formatting for paise amounts — the only money unit the API speaks. */
 export function formatPaise(paise: number | string): string {
   const value = Number(paise) / 100;
