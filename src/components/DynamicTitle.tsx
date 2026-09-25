@@ -17,10 +17,12 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard/ai/users': 'Users',
   '/dashboard/ai/plans': 'Plans',
   '/dashboard/ai/settings': 'Settings',
+  '/dashboard/ai/assistant': 'AI Assistant Usage',
 };
 
 function resolveTitle(pathname: string): string | undefined {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  if (pathname.startsWith('/dashboard/ai/assistant/')) return 'AI Assistant Usage';
   if (pathname.startsWith('/dashboard/schools/')) return 'School Details';
   if (pathname.startsWith('/dashboard/users/')) return 'User Details';
   return undefined;

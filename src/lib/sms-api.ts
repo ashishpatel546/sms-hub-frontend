@@ -1368,6 +1368,178 @@ export const platformActivity = {
     ),
 };
 
+// ── AI Assistant: credits and usage ─────────────────────────────────────
+// Shapes mirror `AgentUsageService` in sms-backend
+// (src/modules/agent/agent-usage.service.ts). Months are IST `YYYY-MM`, the
+// same key the backend meters under.
+
+export type AgentUsageKind = 'API' | 'LLM' | 'STT' | 'TTS';
+
+/** A school's credit position for one month. */
+export interface AgentQuota {
+  month: string;
+  /** Monthly allowance plus this month's bonus. */
+  limit: number;
+  used: number;
+  /** Never negative — an overspend reads as 0 here; compare used to limit. */
+  remaining: number;
+  /** The effective allowance (the platform default when none is set). */
+  allowance: number;
+  bonus: number;
+}
+
+export interface AgentUsageSchoolRow {
+  schoolId: number;
+  slug: string;
+  name: string;
+  allowance: number;
+  /** True when the school has no allowance of its own. */
+  allowanceIsDefault: boolean;
+  bonus: number;
+  limit: number;
+  used: number;
+  remaining: number;
+  apiCalls: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  sttSeconds: number;
+  ttsChars: number;
+}
+
+export interface AgentUsageOverview {
+  month: string;
+  /** The platform default monthly allowance (`AGENT_DEFAULT_MONTHLY_CREDITS`). */
+  defaultAllowance: number;
+  schools: AgentUsageSchoolRow[];
+}
+
+export interface AgentUsageTotals {
+  apiCalls: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  sttSeconds: number;
+  ttsChars: number;
+}
+
+export interface AgentSchoolUsage {
+  quota: AgentQuota;
+  totals: AgentUsageTotals;
+  /** Top 10 users by credits. `name` is empty for a user no longer found. */
+  byUser: { userId: number; name: string | null; credits: number; events: number }[];
+  /** Top 15 tools / models by credits. */
+  byTool: { kind: AgentUsageKind; name: string | null; credits: number; calls: number }[];
+  /** Only days with usage are present, ascending. `day` is `YYYY-MM-DD` (IST). */
+  byDay: { day: string; credits: number }[];
+}
+
+export interface UpdateAgentCreditsPayload {
+  /** null restores the platform default; 0 disables the assistant. */
+  monthlyCredits?: number | null;
+  /** One-off credits for `month`; negative removes (floored at 0 bonus). */
+  bonusCredits?: number;
+  month?: string;
+}
+
+function monthQuery(month?: string) {
+  return month ? `?month=${encodeURIComponent(month)}` : '';
+}
+
+/** A chat model the assistant may run on (curated in sms-backend `agent-models.ts`). */
+export interface AgentModelOption {
+  id: string;
+  label: string;
+  reasoningEffort: 'none' | 'minimal' | null;
+  inputUsdPerM: number;
+  outputUsdPerM: number;
+  /** Tasks passed in the latest evaluation, e.g. "30/30". */
+  evaluation: string;
+  note: string;
+}
+
+/** A voice input or output option: off, the device's own speech, or a model. */
+export interface AgentVoiceOption {
+  id: string;
+  label: string;
+  kind: 'off' | 'device' | 'server';
+  price: string;
+  note: string;
+}
+
+export interface AgentSettingsCatalog {
+  chatModels: AgentModelOption[];
+  voiceInputs: AgentVoiceOption[];
+  voiceOutputs: AgentVoiceOption[];
+  ttsVoices: string[];
+  sessionIdleMinutes: { min: number; max: number };
+  historyMaxTurns: { min: number; max: number };
+}
+
+export interface AgentSettingValues {
+  chatModel: string;
+  /** 'off' | 'device' | a speech-to-text model id. */
+  voiceInput: string;
+  /** 'off' | 'device' | a text-to-speech model id. */
+  voiceOutput: string;
+  ttsVoice: string;
+  sessionIdleMinutes: number;
+  historyMaxTurns: number;
+}
+
+/** A school's own choices; null = use the platform default. */
+export type AgentSettingOverrides = {
+  [K in keyof AgentSettingValues]: AgentSettingValues[K] | null;
+};
+
+export interface PlatformAgentSettings {
+  defaults: AgentSettingValues;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  catalog: AgentSettingsCatalog;
+}
+
+export interface SchoolAgentSettings {
+  overrides: AgentSettingOverrides;
+  defaults: AgentSettingValues;
+  /** What the school's assistant runs with now. */
+  effective: AgentSettingValues;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  catalog: AgentSettingsCatalog;
+}
+
+export const adminAgent = {
+  overview: (month?: string, signal?: AbortSignal) =>
+    smsApi.get<AgentUsageOverview>(`/admin/agent-usage${monthQuery(month)}`, signal),
+  school: (slug: string, month?: string, signal?: AbortSignal) =>
+    smsApi.get<AgentSchoolUsage>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-usage${monthQuery(month)}`,
+      signal,
+    ),
+  /** Defaults for every school, and the options the hub offers. */
+  settings: (signal?: AbortSignal) =>
+    smsApi.get<PlatformAgentSettings>('/admin/agent-settings', signal),
+  /** Needs `agent.settings`. Fields left out stay as they are. */
+  updateSettings: (body: Partial<AgentSettingValues>) =>
+    smsApi.patch<PlatformAgentSettings>('/admin/agent-settings', body),
+  schoolSettings: (slug: string, signal?: AbortSignal) =>
+    smsApi.get<SchoolAgentSettings>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-settings`,
+      signal,
+    ),
+  /** Needs `agent.settings`. null returns a field to the platform default. */
+  updateSchoolSettings: (slug: string, body: Partial<AgentSettingOverrides>) =>
+    smsApi.patch<SchoolAgentSettings>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-settings`,
+      body,
+    ),
+  /** Needs the `agent.credits` capability. Answers the month's new quota. */
+  updateCredits: (slug: string, body: UpdateAgentCreditsPayload) =>
+    smsApi.patch<AgentQuota>(
+      `/admin/schools/${encodeURIComponent(slug)}/agent-credits`,
+      body,
+    ),
+};
+
 /** ₹ formatting for paise amounts — the only money unit the API speaks. */
 export function formatPaise(paise: number | string): string {
   const value = Number(paise) / 100;

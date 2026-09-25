@@ -21,6 +21,7 @@ import toast from 'react-hot-toast';
 import SchoolBillingSection from '@/components/billing/SchoolBillingSection';
 import FeatureOverridesSection from '@/components/billing/FeatureOverridesSection';
 import InstallGuideDialog from '@/components/schools/InstallGuideDialog';
+import SchoolAssistantSection from '@/components/agent/SchoolAssistantSection';
 
 const KNOWN_SECRETS = [
   { key: 'razorpay_key_id', label: 'Razorpay Key ID' },
@@ -1005,6 +1006,8 @@ export default function SchoolDetailPage() {
             onFeaturesChanged={() => void refresh({ quiet: true })}
             onAddonsChanged={handleBillingChanged}
           />
+
+          <SchoolAssistantSection slug={slug} />
 
           <section className="panel p-6">
             <h2 className="t-section text-chalk border-b border-line pb-3 mb-5">

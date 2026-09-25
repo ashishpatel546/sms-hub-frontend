@@ -29,15 +29,22 @@ const KNOWN_SETTINGS: Record<
   },
 };
 
-// tokens_per_credit, usd_to_inr_rate, and llm_tier_* are stored in the same
-// settings table but have dedicated editors on the AI Plans page (Model
-// Pricing / AI Model Tiers panels) — hide their raw rows here.
+// These are stored in the same settings table but have dedicated editors on
+// the AI Plans page — a checklist for the allowed models ("Manage models"),
+// a price table for model pricing, pickers for the model tiers. Their raw
+// values are JSON or tied to each other, so they are hidden here rather than
+// offered as a free-text box that could store something the service cannot
+// read.
+const PLANS_PAGE_KEYS = new Set([
+  'tokens_per_credit',
+  'usd_to_inr_rate',
+  'llm_allowed_models',
+  'llm_model_pricing',
+  'llm_tier_ids',
+]);
+
 function isManagedElsewhere(key: string): boolean {
-  return (
-    key === 'tokens_per_credit' ||
-    key === 'usd_to_inr_rate' ||
-    key.startsWith('llm_tier_')
-  );
+  return PLANS_PAGE_KEYS.has(key) || key.startsWith('llm_tier_');
 }
 
 function SettingRow({
@@ -129,8 +136,9 @@ export default function AiSettingsPage() {
           title="Settings"
           description={
             <>
-              Free plan credits, grant limits and session expiry. Model tiers
-              and pricing live on the{' '}
+              Free plan credits, grant limits and session expiry. Allowed
+              models, model tiers and model pricing have their own editors on
+              the{' '}
               <Link
                 href="/dashboard/ai/plans"
                 className="text-iris underline underline-offset-2 hover:text-iris-bright"
@@ -162,9 +170,23 @@ export default function AiSettingsPage() {
               No settings found.
             </div>
           ) : (
-            visible.map((s) => (
-              <SettingRow key={s.key} setting={s} onSave={load} />
-            ))
+            <>
+              {visible.map((s) => (
+                <SettingRow key={s.key} setting={s} onSave={load} />
+              ))}
+              <div className="px-5 py-4 text-[12px] text-chalk-dim">
+                Looking for allowed models or model pricing? Use{' '}
+                <span className="text-chalk-soft">Manage models</span> and{' '}
+                <span className="text-chalk-soft">Model pricing</span> on the{' '}
+                <Link
+                  href="/dashboard/ai/plans"
+                  className="text-iris underline underline-offset-2 hover:text-iris-bright"
+                >
+                  Plans
+                </Link>{' '}
+                page.
+              </div>
+            </>
           )}
         </section>
       </Reveal>
