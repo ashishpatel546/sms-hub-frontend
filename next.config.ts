@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
+      {
+        // The hub is an internal admin app: keep hub.colegios.in and
+        // hub-dev.colegios.in out of search results.
+        source: '/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
       // Dev only, and only over the tunnel does it matter. Turbopack names a
       // dev chunk after its module group, so the URL holds still while the
       // bytes behind it change on every edit — and Next still serves it with
