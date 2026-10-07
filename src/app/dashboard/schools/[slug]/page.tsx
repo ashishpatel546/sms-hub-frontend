@@ -12,6 +12,7 @@ import { StatusPill, STATUS_INK } from '@/components/ui/Pills';
 import {
   adminSchools,
   type School,
+  type SchoolLanguage,
   type SchoolOwner,
   type SchoolProfile,
 } from '@/lib/sms-api';
@@ -156,6 +157,7 @@ export default function SchoolDetailPage() {
         countryCode: s.countryCode ?? 'IN',
         postalCode: s.postalCode ?? '',
         board: s.board ?? '',
+        defaultLanguage: s.defaultLanguage ?? 'en',
       });
       if (ownerInfo) {
         setOwner(ownerInfo);
@@ -829,6 +831,25 @@ export default function SchoolDetailPage() {
                   <option value="IB">IB</option>
                   <option value="IGCSE">IGCSE</option>
                   <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">
+                  Portal language
+                </label>
+                <select
+                  value={profile.defaultLanguage ?? 'en'}
+                  onChange={(e) =>
+                    setProfileField(
+                      'defaultLanguage',
+                      e.target.value as SchoolLanguage,
+                    )
+                  }
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-ink-800"
+                >
+                  <option value="en">English</option>
+                  <option value="hi">हिन्दी (Hindi)</option>
+                  <option value="bn">বাংলা (Bengali)</option>
                 </select>
               </div>
               <div>

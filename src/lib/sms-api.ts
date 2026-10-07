@@ -89,7 +89,11 @@ export interface SchoolProfile {
   timezone?: string | null;
   website?: string | null;
   tagline?: string | null;
+  /** Language the school portal opens in; users can still switch for themselves. */
+  defaultLanguage?: SchoolLanguage;
 }
+
+export type SchoolLanguage = 'en' | 'hi' | 'bn';
 
 export interface School extends SchoolProfile {
   id: number;
