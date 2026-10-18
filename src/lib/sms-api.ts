@@ -391,6 +391,8 @@ export interface FeatureCatalogEntry {
   group: string;
   description: string;
   defaultEnabled: boolean;
+  /** Launched as a beta; shown with a "Beta" tag. */
+  beta?: boolean;
 }
 
 /** How one school's feature map is arrived at — plan baseline plus overrides. */

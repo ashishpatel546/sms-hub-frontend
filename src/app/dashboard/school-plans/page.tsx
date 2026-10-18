@@ -56,7 +56,12 @@ function FeatureChecklist({
                   onChange={(e) => onToggle(entry.key, e.target.checked)}
                   className="mt-0.5 accent-mint"
                 />
-                <span>{entry.label}</span>
+                <span>
+                  {entry.label}
+                  {entry.beta && (
+                    <span className="ml-1.5 rounded-sm bg-amber/15 px-1 py-px align-middle text-[9.5px] font-semibold uppercase tracking-wide text-amber">Beta</span>
+                  )}
+                </span>
               </label>
             ))}
           </div>
