@@ -319,6 +319,9 @@ export default function FeatureOverridesSection({
                     <div className="min-w-0">
                       <p className="text-sm text-chalk-soft">
                         {row.entry.label}
+                        {row.entry.beta && (
+                          <span className="ml-1.5 rounded-sm bg-amber/15 px-1 py-px align-middle text-[9.5px] font-semibold uppercase tracking-wide text-amber">Beta</span>
+                        )}
                       </p>
                       <p className="mt-0.5 text-[11px] text-chalk-faint">
                         {row.entry.description}
